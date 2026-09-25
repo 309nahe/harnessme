@@ -6,7 +6,7 @@ pub mod core;
 pub mod tools;
 
 pub use core::{
-    FunctionCall, FunctionDefinition, Message, Role, Tool, ToolCall, ToolDefinition, ToolError,
-    ToolRegistry, ToolResult,
+    FunctionCall, FunctionDefinition, Message, OpenAiCompatibleProvider, Provider, ProviderError,
+    ProviderResponse, Role, Tool, ToolCall, ToolDefinition, ToolError, ToolRegistry, ToolResult,
 };
 pub use tools::{CalculatorTool, EchoTool};
