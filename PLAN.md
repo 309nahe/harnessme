@@ -177,6 +177,15 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Implement interactive `handle_google_signin` flow prompting user, opening browser at `https://accounts.google.com/`, auto-linking discovered credentials, and confirming agent readiness.
 - [x] Add unit tests in `src/core/provider.rs` and `src/main.rs` for local credential discovery, login commands, and REPL parsing.
 
+### Phase 15 (MS2 - Issue #15): Native Google AI Pro Subscription Integration via `agy`
+- [x] Configure `AntigravityProvider` to directly connect to Google Cloud and execute models via the authenticated `agy` CLI binary using the user's Google AI Pro subscription (`mavepith762@gmail.com`).
+- [x] Set default model to `gemini-3.1-pro-high` (Google AI Pro Flagship) and default connection to `Google Cloud (Antigravity Native)` (eliminating fake localhost endpoints).
+- [x] Implement prompt formatting with tools (`build_prompt_with_tools`) and structured tool call extraction (`extract_tool_calls_from_text`) for Gemini.
+- [x] Update model catalogue with Google AI Pro models: `gemini-3.1-pro-high`, `gemini-3.8-flash-high`, `gemini-3.7-flash-high`, `gemini-3.6-flash-high`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`.
+- [x] Update CLI banner, `/agy status`, and `/agy menu` to clearly display Google AI Pro Subscription status, active account, and native cloud connection.
+- [x] Add unit tests for prompt building, tool extraction, `find_agy_binary`, and model resolution.
+- [x] Verify live multi-turn agent execution with the user's Google AI Pro subscription.
+
 ---
 
 ## 6. Potential Future Enhancements (Post-Milestone 2)
