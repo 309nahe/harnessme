@@ -161,6 +161,14 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Implement `/agy` subcommands: `/agy status`, `/agy model <name>`, `/agy url <url>`, `/agy port <port>`, `/agy csrf <token|none>`, `/agy key <key|none>`, `/agy temp <val>`, `/agy timeout <secs>`, `/agy reset`, `/agy switch`, `/agy help`.
 - [x] Add unit tests in `src/main.rs` and `src/core/agent.rs` for command parsing and provider replacement.
 
+### Phase 13 (MS2 - Issue #13): Google Account Linking & Interactive Model Selection in /agy
+- [x] Add `account_email` metadata, builder methods (`with_account`, `with_optional_account`), and getter `account_email()` to `AntigravityProvider`.
+- [x] Auto-discover `ANTIGRAVITY_ACCOUNT`, `GOOGLE_ACCOUNT`, and `AGY_ACCOUNT` in `AntigravityProvider::from_env()`.
+- [x] Define `SUPPORTED_MODELS` catalogue and `resolve_model_name(input)` supporting numeric shortcuts (`1`..`5`) and aliases (`flash`, `pro`).
+- [x] Add `AgySubcommand::Menu`, `AgySubcommand::Link`, `AgySubcommand::Account`, and `AgySubcommand::ModelList` to REPL command parser.
+- [x] Implement interactive `/agy` configuration menu presenting choices `[1] Link Google Account / Token` and `[2] Change Model`.
+- [x] Add unit tests in `src/core/provider.rs` and `src/main.rs` for account configuration, model selection shortcuts, and command parsing.
+
 ---
 
 ## 6. Potential Future Enhancements (Post-Milestone 2)

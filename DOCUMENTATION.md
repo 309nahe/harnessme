@@ -186,31 +186,66 @@ HarnessMe supports intuitive slash commands as well as standard shell shorthand:
 | `/exit` | `exit`, `/quit`, `quit` | Gracefully exit the interactive REPL session |
 
 #### Antigravity Configuration (`/agy` Commands)
-The `/agy` command suite allows inspecting and mutating the Antigravity provider in real-time without restarting the process:
+The `/agy` command suite presents an interactive choice menu and subcommands to link Google accounts, select Gemini/Antigravity models, or mutate connection settings in real-time without restarting the process:
 
-| Command | Example | Description |
-|---|---|---|
-| `/agy` / `/agy status` | `/agy` | Inspect current Antigravity configuration and active status |
-| `/agy model <name>` | `/agy model gemini-2.5-pro` | Switch target model (`gemini-2.5-flash`, `gemini-2.5-pro`, `agy-pro`) |
-| `/agy url <url>` | `/agy url http://127.0.0.1:38035/v1` | Update base endpoint URL |
-| `/agy port <port>` | `/agy port 38035` | Shortcut to update base URL to `http://127.0.0.1:<port>/v1` |
-| `/agy csrf <token\|none>` | `/agy csrf secret123` | Update or clear `X-Antigravity-CSRF-Token` header |
-| `/agy key <key\|none>` | `/agy key token_abc` | Update or clear Bearer API key |
-| `/agy temp <0.0 - 2.0>` | `/agy temp 0.2` | Update sampling temperature |
-| `/agy timeout <secs>` | `/agy timeout 45` | Update HTTP request timeout |
-| `/agy reset` | `/agy reset` | Reload all Antigravity settings from environment variables |
-| `/agy switch` | `/agy switch` | Switch active agent provider to Antigravity (AGY) |
-| `/agy help` | `/agy help` | Display `/agy` command help manual |
+| Command | Shortcut | Example | Description |
+|---|---|---|---|
+| `/agy` / `/agy menu` | `/agy` | `/agy` | Display interactive menu with choices to link account or change model |
+| `/agy link [token\|email]` | `/agy 1` | `/agy link user@gmail.com` | Link Google account email or OAuth Bearer token (or `/agy link clear`) |
+| `/agy account <email>` | - | `/agy account user@example.com` | Set Google account email (or `/agy account clear`) |
+| `/agy models` / `/agy model` | `/agy 2` | `/agy models` | List supported Google Gemini and Antigravity models |
+| `/agy model <name\|num>` | `/agy model 2` | `/agy model gemini-2.5-pro` | Switch model by name or index (`1`=flash, `2`=pro, `3`=1.5-pro, `4`=1.5-flash, `5`=agy-pro) |
+| `/agy status` | `/agy 3` | `/agy status` | Inspect current Antigravity configuration, linked account, and active status |
+| `/agy switch` | `/agy 4` | `/agy switch` | Switch active agent provider to Antigravity (AGY) |
+| `/agy url <url>` | - | `/agy url http://127.0.0.1:38035/v1` | Update base endpoint URL |
+| `/agy port <port>` | - | `/agy port 38035` | Shortcut to update base URL to `http://127.0.0.1:<port>/v1` |
+| `/agy csrf <token\|none>` | - | `/agy csrf secret123` | Update or clear `X-Antigravity-CSRF-Token` header |
+| `/agy key <key\|none>` | - | `/agy key token_abc` | Update or clear Bearer API key |
+| `/agy temp <0.0 - 2.0>` | - | `/agy temp 0.2` | Update sampling temperature |
+| `/agy timeout <secs>` | - | `/agy timeout 45` | Update HTTP request timeout |
+| `/agy reset` | - | `/agy reset` | Reload all Antigravity settings from environment variables |
+| `/agy help` | `/?` | `/agy help` | Display `/agy` command help manual |
 
 #### Example Conversational Workflow
 ```text
+user > /agy
+================ Antigravity (AGY) Configuration Menu ================
+ Active Status   : ACTIVE (Agent is using Antigravity)
+ Linked Account  : None (Unlinked)
+ Current Model   : gemini-2.5-flash
+----------------------------------------------------------------------
+ Choose an option or enter a command below:
+   [1] Link Google Account / Auth Token  -> '/agy link' or '/agy account'
+   [2] Change Model (Gemini / AGY)       -> '/agy model' or '/agy models'
+   [3] View Detailed Status & Endpoints  -> '/agy status'
+   [4] Switch Active Provider to AGY     -> '/agy switch'
+   [?] Full Antigravity Help             -> '/agy help'
+======================================================================
+
+user > /agy 1 user@example.com
+system > Google account linked to 'user@example.com'.
+
+user > /agy 2
+---------------- Available Gemini & Antigravity Models ----------------
+  [1] gemini-2.5-flash   : Gemini 2.5 Flash (Ultra-fast, multimodal reasoning & tool calling) (CURRENT)
+  [2] gemini-2.5-pro     : Gemini 2.5 Pro (Advanced reasoning & deep code generation)
+  [3] gemini-1.5-pro     : Gemini 1.5 Pro (Long 2M+ context window & complex analysis)
+  [4] gemini-1.5-flash   : Gemini 1.5 Flash (Lightweight, ultra-low latency)
+  [5] agy-pro            : Antigravity Pro Enterprise Model
+-----------------------------------------------------------------------
+To select a model, run: '/agy model <number|name>' (e.g. '/agy model 2' or '/agy model gemini-2.5-pro')
+
+user > /agy model 2
+system > Antigravity model updated to 'gemini-2.5-pro'.
+
 user > /agy status
 ---------------- Antigravity (AGY) Status ----------------
   Active on Agent : YES (Active)
-  Model           : gemini-2.5-flash
+  Google Account  : user@example.com
+  Model           : gemini-2.5-pro
   Base URL        : http://127.0.0.1:38035/v1
   CSRF Token      : Configured
-  API Key         : None
+  API Key / Bearer: None
   Temperature     : 0.7
   Timeout         : 60s
 ----------------------------------------------------------
@@ -1327,7 +1362,6 @@ impl Tool for TimeTool {
   - Updated Table of Contents and renumbered all sections across the entire document (1 through 15).
 - **Verification**:
   - Verified all Markdown links, table formatting, code block syntax, and headers.
-- **Next Steps**:
   - Proceed with implementing Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
 
 ---
@@ -1376,5 +1410,33 @@ impl Tool for TimeTool {
   - `cargo clippy -- -D warnings` passed with 0 warnings.
   - `cargo fmt --check` passed cleanly.
   - `cargo test` ran 37 tests (34 library + 3 binary unit tests) with 37/37 passing (100% success rate).
+- **Next Steps**:
+  - Proceed with Milestone 2 Issue #13: Google Account Linking & Interactive Model Selection to /agy.
+
+---
+
+### [2026-09-25] - Implementation of Issue #13: Google Account Linking & Interactive Model Selection in `/agy`
+- **Objective**: Implement interactive choices in the `/agy` command suite, allowing users to link their Google account / OAuth tokens and select models from a curated Gemini / Antigravity catalogue with numeric shortcuts.
+- **Changes Made**:
+  - Enhanced [`AntigravityProvider`](file:///home/nana/dev/harness/src/core/provider.rs):
+    - Added `account_email: Option<String>` with builder methods `with_account(email)` and `with_optional_account(email)` and getter `account_email()`.
+    - Auto-discovered `ANTIGRAVITY_ACCOUNT`, `GOOGLE_ACCOUNT`, and `AGY_ACCOUNT` in `from_env()`.
+    - Added `SUPPORTED_MODELS` catalogue (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-pro`, `gemini-1.5-flash`, `agy-pro`).
+    - Added `resolve_model_name(input)` supporting numeric shortcuts (`1`, `2`, `3`, `4`, `5`) and aliases (`flash`, `pro`).
+    - Added comprehensive unit tests for account builder, environment loading, and model resolution.
+  - Enhanced [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs):
+    - Added `AgySubcommand::Menu`, `AgySubcommand::Link(Option<String>)`, `AgySubcommand::Account(String)`, `AgySubcommand::ModelList`.
+    - Updated `parse_command` to route `/agy` or `/agy menu` to interactive selection menu, `/agy 1` to account linking, `/agy 2` to model selection, `/agy 3` to status, and `/agy 4` to provider switch.
+    - Implemented `print_agy_menu` and `print_agy_models` presenting choices.
+    - Added CLI tests covering all new subcommands, numeric shortcuts, and alias resolutions.
+  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md) (Section 1.4 & Section 15) and [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) (Phase 13).
+- **Architectural Decisions**:
+  - Maintained zero dependency bloat using Rust standard library pattern matching and formatted terminal output.
+  - Interactive selection menu provides immediate feedback and straightforward numeric selection for terminal users.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 38 tests (35 library + 3 binary unit tests) with 38/38 passing (100% success rate).
 - **Next Steps**:
   - Proceed with Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.

@@ -254,6 +254,7 @@ impl Provider for OpenAiCompatibleProvider {
 #[derive(Debug, Clone)]
 pub struct AntigravityProvider {
     api_key: Option<String>,
+    account_email: Option<String>,
     base_url: String,
     csrf_token: Option<String>,
     model: String,
@@ -268,10 +269,45 @@ impl AntigravityProvider {
     /// Default fallback base URL for local Antigravity Language Server.
     pub const DEFAULT_BASE_URL: &'static str = "http://127.0.0.1:38035/v1";
 
+    /// Curated Google Gemini & Antigravity model catalogue with descriptions.
+    pub const SUPPORTED_MODELS: &'static [(&'static str, &'static str)] = &[
+        (
+            "gemini-2.5-flash",
+            "Gemini 2.5 Flash (Ultra-fast, multimodal reasoning & tool calling)",
+        ),
+        (
+            "gemini-2.5-pro",
+            "Gemini 2.5 Pro (Advanced reasoning & deep code generation)",
+        ),
+        (
+            "gemini-1.5-pro",
+            "Gemini 1.5 Pro (Long 2M+ context window & complex analysis)",
+        ),
+        (
+            "gemini-1.5-flash",
+            "Gemini 1.5 Flash (Lightweight, ultra-low latency)",
+        ),
+        ("agy-pro", "Antigravity Pro Enterprise Model"),
+    ];
+
+    /// Resolves a numeric shortcut index or alias into a canonical model name if matched.
+    pub fn resolve_model_name(input: &str) -> String {
+        let trimmed = input.trim();
+        match trimmed {
+            "1" | "flash" => "gemini-2.5-flash".to_string(),
+            "2" | "pro" => "gemini-2.5-pro".to_string(),
+            "3" => "gemini-1.5-pro".to_string(),
+            "4" => "gemini-1.5-flash".to_string(),
+            "5" => "agy-pro".to_string(),
+            other => other.to_string(),
+        }
+    }
+
     /// Creates a new `AntigravityProvider` with the specified model name.
     pub fn new(model: impl Into<String>) -> Self {
         Self {
             api_key: None,
+            account_email: None,
             base_url: Self::DEFAULT_BASE_URL.to_string(),
             csrf_token: None,
             model: model.into(),
@@ -282,12 +318,18 @@ impl AntigravityProvider {
     }
 
     /// Automatically constructs an `AntigravityProvider` discovering configuration from environment variables:
+    /// - Account: `ANTIGRAVITY_ACCOUNT`, `GOOGLE_ACCOUNT`, or `AGY_ACCOUNT`
     /// - Base URL: `ANTIGRAVITY_BASE_URL`, `AGY_BASE_URL`, or `http://{ANTIGRAVITY_LS_ADDRESS}/v1`
     /// - API Key: `ANTIGRAVITY_API_KEY` or `AGY_API_KEY`
     /// - CSRF Token: `ANTIGRAVITY_CSRF_TOKEN`
     /// - Model: `ANTIGRAVITY_MODEL`, `HARNESS_MODEL`, or `DEFAULT_MODEL` (`gemini-2.5-flash`)
     /// - Source Metadata: `ANTIGRAVITY_SOURCE_METADATA`
     pub fn from_env() -> Self {
+        let account_email = std::env::var("ANTIGRAVITY_ACCOUNT")
+            .or_else(|_| std::env::var("GOOGLE_ACCOUNT"))
+            .or_else(|_| std::env::var("AGY_ACCOUNT"))
+            .ok();
+
         let api_key = std::env::var("ANTIGRAVITY_API_KEY")
             .or_else(|_| std::env::var("AGY_API_KEY"))
             .ok();
@@ -319,6 +361,7 @@ impl AntigravityProvider {
 
         Self {
             api_key,
+            account_email,
             base_url,
             csrf_token,
             model,
@@ -326,6 +369,18 @@ impl AntigravityProvider {
             timeout_secs: 60,
             source_metadata,
         }
+    }
+
+    /// Sets the Google account email associated with Antigravity.
+    pub fn with_account(mut self, email: impl Into<String>) -> Self {
+        self.account_email = Some(email.into());
+        self
+    }
+
+    /// Sets or clears the optional Google account email.
+    pub fn with_optional_account(mut self, email: Option<String>) -> Self {
+        self.account_email = email;
+        self
     }
 
     /// Sets the API key for bearer authentication.
@@ -380,6 +435,11 @@ impl AntigravityProvider {
     pub fn with_source_metadata(mut self, source: impl Into<String>) -> Self {
         self.source_metadata = Some(source.into());
         self
+    }
+
+    /// Returns the Google account email, if configured.
+    pub fn account_email(&self) -> Option<&str> {
+        self.account_email.as_deref()
     }
 
     /// Returns the API key, if configured.
@@ -744,6 +804,7 @@ mod tests {
         let provider = AntigravityProvider::new("gemini-2.5-pro")
             .with_base_url("http://127.0.0.1:38035/v1")
             .with_api_key("agy_secret_token")
+            .with_account("user@example.com")
             .with_csrf_token("csrf_123")
             .with_temperature(0.4)
             .with_timeout(30)
@@ -752,6 +813,7 @@ mod tests {
         assert_eq!(provider.model(), "gemini-2.5-pro");
         assert_eq!(provider.base_url(), "http://127.0.0.1:38035/v1");
         assert_eq!(provider.api_key(), Some("agy_secret_token"));
+        assert_eq!(provider.account_email(), Some("user@example.com"));
         assert_eq!(provider.csrf_token(), Some("csrf_123"));
         assert!((provider.temperature() - 0.4).abs() < f32::EPSILON);
         assert_eq!(provider.timeout_secs(), 30);
@@ -759,6 +821,9 @@ mod tests {
             provider.source_metadata(),
             Some("{\"agent\":\"antigravity\"}")
         );
+
+        let provider_cleared = provider.with_optional_account(None);
+        assert_eq!(provider_cleared.account_email(), None);
     }
 
     #[test]
@@ -767,5 +832,39 @@ mod tests {
         assert_eq!(provider.timeout_secs(), 60);
         assert!(!provider.base_url().is_empty());
         assert!(!provider.model().is_empty());
+    }
+
+    #[test]
+    fn test_antigravity_model_resolution_and_catalogue() {
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("1"),
+            "gemini-2.5-flash"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("flash"),
+            "gemini-2.5-flash"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("2"),
+            "gemini-2.5-pro"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("pro"),
+            "gemini-2.5-pro"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("3"),
+            "gemini-1.5-pro"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("4"),
+            "gemini-1.5-flash"
+        );
+        assert_eq!(AntigravityProvider::resolve_model_name("5"), "agy-pro");
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("custom-gemini-preview"),
+            "custom-gemini-preview"
+        );
+        assert_eq!(AntigravityProvider::SUPPORTED_MODELS.len(), 5);
     }
 }

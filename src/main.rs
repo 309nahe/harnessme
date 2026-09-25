@@ -42,8 +42,16 @@ pub enum Command {
 /// Subcommands supported under `/agy`.
 #[derive(Debug, PartialEq, Clone)]
 pub enum AgySubcommand {
+    /// Present interactive choice menu (link Google account, change model, etc.)
+    Menu,
     /// Display Antigravity provider settings and active status.
     Status,
+    /// Link Google account email or auth bearer token.
+    Link(Option<String>),
+    /// Configure Google account email.
+    Account(String),
+    /// List available Gemini and Antigravity models.
+    ModelList,
     /// Update target model.
     Model(String),
     /// Update base URL.
@@ -84,19 +92,60 @@ pub fn parse_command(input: &str) -> Command {
         "/provider" | "/providers" => Command::ProviderInfo,
         "/agy" | "agy" => {
             if parts.len() == 1 {
-                return Command::Agy(AgySubcommand::Status);
+                return Command::Agy(AgySubcommand::Menu);
             }
             let sub = parts[1].to_lowercase();
             match sub.as_str() {
+                "menu" => Command::Agy(AgySubcommand::Menu),
+                "1" => {
+                    if parts.len() > 2 {
+                        Command::Agy(AgySubcommand::Link(Some(parts[2..].join(" "))))
+                    } else {
+                        Command::Agy(AgySubcommand::Link(None))
+                    }
+                }
+                "2" => {
+                    if parts.len() > 2 {
+                        Command::Agy(AgySubcommand::Model(
+                            AntigravityProvider::resolve_model_name(&parts[2..].join(" ")),
+                        ))
+                    } else {
+                        Command::Agy(AgySubcommand::ModelList)
+                    }
+                }
+                "3" => Command::Agy(AgySubcommand::Status),
+                "4" => Command::Agy(AgySubcommand::Switch),
                 "status" | "info" => Command::Agy(AgySubcommand::Status),
                 "help" | "?" => Command::Agy(AgySubcommand::Help),
                 "reset" | "reload" => Command::Agy(AgySubcommand::Reset),
                 "switch" | "use" | "activate" => Command::Agy(AgySubcommand::Switch),
+                "link" | "login" | "auth" => {
+                    if parts.len() > 2 {
+                        let val = parts[2..].join(" ");
+                        if val.eq_ignore_ascii_case("none") || val.eq_ignore_ascii_case("clear") {
+                            Command::Agy(AgySubcommand::Link(Some("clear".to_string())))
+                        } else {
+                            Command::Agy(AgySubcommand::Link(Some(val)))
+                        }
+                    } else {
+                        Command::Agy(AgySubcommand::Link(None))
+                    }
+                }
+                "account" | "email" => {
+                    if parts.len() > 2 {
+                        Command::Agy(AgySubcommand::Account(parts[2..].join(" ")))
+                    } else {
+                        Command::Agy(AgySubcommand::Account(String::new()))
+                    }
+                }
+                "models" => Command::Agy(AgySubcommand::ModelList),
                 "model" | "m" => {
                     if parts.len() > 2 {
-                        Command::Agy(AgySubcommand::Model(parts[2..].join(" ")))
+                        Command::Agy(AgySubcommand::Model(
+                            AntigravityProvider::resolve_model_name(&parts[2..].join(" ")),
+                        ))
                     } else {
-                        Command::Agy(AgySubcommand::Help)
+                        Command::Agy(AgySubcommand::ModelList)
                     }
                 }
                 "url" | "endpoint" | "base_url" => {
@@ -173,7 +222,7 @@ pub fn parse_command(input: &str) -> Command {
 fn print_help() {
     println!("======================= Available REPL Commands =======================");
     println!("  /help, help, /?        : Show this command summary");
-    println!("  /agy                   : Display active Antigravity (AGY) configuration");
+    println!("  /agy                   : Display Antigravity interactive menu & choices");
     println!("  /agy [subcommand]      : Inspect or dynamically configure Antigravity");
     println!("  /provider              : Show currently active provider details");
     println!("  /history, history      : Inspect entire multi-turn conversation memory");
@@ -182,11 +231,60 @@ fn print_help() {
     println!("=======================================================================\n");
 }
 
+fn print_agy_menu(agy: &AntigravityProvider, is_active: bool) {
+    println!("================ Antigravity (AGY) Configuration Menu ================");
+    println!(
+        " Active Status   : {}",
+        if is_active {
+            "ACTIVE (Agent is using Antigravity)"
+        } else {
+            "STANDBY (Run '/agy switch' or choose [4] to activate)"
+        }
+    );
+    println!(
+        " Linked Account  : {}",
+        agy.account_email().unwrap_or("None (Unlinked)")
+    );
+    println!(" Current Model   : {}", agy.model());
+    println!("----------------------------------------------------------------------");
+    println!(" Choose an option or enter a command below:");
+    println!("   [1] Link Google Account / Auth Token  -> '/agy link' or '/agy account'");
+    println!("   [2] Change Model (Gemini / AGY)       -> '/agy model' or '/agy models'");
+    println!("   [3] View Detailed Status & Endpoints  -> '/agy status'");
+    println!("   [4] Switch Active Provider to AGY     -> '/agy switch'");
+    println!("   [?] Full Antigravity Help             -> '/agy help'");
+    println!("======================================================================\n");
+}
+
+fn print_agy_models(current_model: &str) {
+    println!("---------------- Available Gemini & Antigravity Models ----------------");
+    for (idx, (name, description)) in AntigravityProvider::SUPPORTED_MODELS.iter().enumerate() {
+        let is_current = if *name == current_model {
+            " (CURRENT)"
+        } else {
+            ""
+        };
+        println!(
+            "  [{}] {:<18} : {}{}",
+            idx + 1,
+            name,
+            description,
+            is_current
+        );
+    }
+    println!("-----------------------------------------------------------------------");
+    println!("To select a model, run: '/agy model <number|name>' (e.g. '/agy model 2' or '/agy model gemini-2.5-pro')\n");
+}
+
 fn print_agy_help() {
     println!("------------------- Antigravity (/agy) Commands -------------------");
-    println!("  /agy                   : Display current Antigravity status & settings");
+    println!("  /agy                   : Display interactive menu (link account / change model)");
+    println!("  /agy menu              : Display interactive configuration menu");
+    println!("  /agy link [token]      : Link Google account / OAuth bearer token or clear");
+    println!("  /agy account <email>   : Link Google account email (or 'clear')");
+    println!("  /agy models            : List supported Gemini & Antigravity models");
+    println!("  /agy model <name|num>  : Set model (e.g. 1=flash, 2=pro, or 'gemini-2.5-pro')");
     println!("  /agy status            : Display current Antigravity status & settings");
-    println!("  /agy model <name>      : Set model (e.g. gemini-2.5-pro, gemini-2.5-flash)");
     println!("  /agy url <url>         : Set base URL (e.g. http://127.0.0.1:38035/v1)");
     println!("  /agy port <port>       : Set local port (shortcut for 127.0.0.1:<port>)");
     println!("  /agy csrf <token|none> : Set or clear X-Antigravity-CSRF-Token header");
@@ -208,6 +306,10 @@ fn print_agy_status(agy: &AntigravityProvider, is_active: bool) {
             "NO (Standby)"
         }
     );
+    println!(
+        "  Google Account  : {}",
+        agy.account_email().unwrap_or("None (Unlinked)")
+    );
     println!("  Model           : {}", agy.model());
     println!("  Base URL        : {}", agy.base_url());
     println!(
@@ -219,7 +321,7 @@ fn print_agy_status(agy: &AntigravityProvider, is_active: bool) {
         }
     );
     println!(
-        "  API Key         : {}",
+        "  API Key / Bearer: {}",
         if agy.api_key().is_some() {
             "Configured (hidden)"
         } else {
@@ -445,6 +547,69 @@ fn main() {
                         println!("------------------------------------------------------\n");
                     }
                     Command::Agy(subcommand) => match subcommand {
+                        AgySubcommand::Menu => {
+                            print_agy_menu(&agy_provider, is_antigravity);
+                        }
+                        AgySubcommand::ModelList => {
+                            print_agy_models(agy_provider.model());
+                        }
+                        AgySubcommand::Link(val) => {
+                            match val {
+                                Some(target) => {
+                                    let trimmed = target.trim();
+                                    if trimmed.eq_ignore_ascii_case("none")
+                                        || trimmed.eq_ignore_ascii_case("clear")
+                                    {
+                                        agy_provider = agy_provider
+                                            .with_optional_account(None)
+                                            .with_optional_api_key(None);
+                                        println!(
+                                            "system > Google account and API authentication cleared."
+                                        );
+                                    } else if trimmed.contains('@') {
+                                        agy_provider = agy_provider.with_account(trimmed);
+                                        println!("system > Google account linked to '{trimmed}'.");
+                                    } else {
+                                        agy_provider = agy_provider.with_api_key(trimmed);
+                                        println!("system > Antigravity auth/bearer token linked.");
+                                    }
+                                    if is_antigravity {
+                                        agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                    }
+                                }
+                                None => {
+                                    println!("---------------- Link Google Account / Token ----------------");
+                                    println!(
+                                        "  1. Link by Email : /agy account <your.email@gmail.com>"
+                                    );
+                                    println!(
+                                        "  2. Link by Token : /agy link <oauth_bearer_or_api_key>"
+                                    );
+                                    println!("  3. Clear Account : /agy link clear (or /agy account clear)");
+                                    println!("-------------------------------------------------------------\n");
+                                }
+                            }
+                        }
+                        AgySubcommand::Account(email) => {
+                            let trimmed = email.trim();
+                            if trimmed.is_empty() {
+                                println!("system > Usage: /agy account <your.email@gmail.com> (or '/agy account clear')");
+                            } else if trimmed.eq_ignore_ascii_case("none")
+                                || trimmed.eq_ignore_ascii_case("clear")
+                            {
+                                agy_provider = agy_provider.with_optional_account(None);
+                                if is_antigravity {
+                                    agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                }
+                                println!("system > Google account unlinked.");
+                            } else {
+                                agy_provider = agy_provider.with_account(trimmed);
+                                if is_antigravity {
+                                    agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                }
+                                println!("system > Google account linked to '{trimmed}'.");
+                            }
+                        }
                         AgySubcommand::Status => {
                             print_agy_status(&agy_provider, is_antigravity);
                         }
@@ -583,7 +748,29 @@ mod tests {
 
     #[test]
     fn test_parse_command_agy_subcommands() {
-        assert_eq!(parse_command("/agy"), Command::Agy(AgySubcommand::Status));
+        assert_eq!(parse_command("/agy"), Command::Agy(AgySubcommand::Menu));
+        assert_eq!(
+            parse_command("/agy menu"),
+            Command::Agy(AgySubcommand::Menu)
+        );
+        assert_eq!(
+            parse_command("/agy 1"),
+            Command::Agy(AgySubcommand::Link(None))
+        );
+        assert_eq!(
+            parse_command("/agy 1 user@example.com"),
+            Command::Agy(AgySubcommand::Link(Some("user@example.com".to_string())))
+        );
+        assert_eq!(
+            parse_command("/agy 2"),
+            Command::Agy(AgySubcommand::ModelList)
+        );
+        assert_eq!(
+            parse_command("/agy 2 2"),
+            Command::Agy(AgySubcommand::Model("gemini-2.5-pro".to_string()))
+        );
+        assert_eq!(parse_command("/agy 3"), Command::Agy(AgySubcommand::Status));
+        assert_eq!(parse_command("/agy 4"), Command::Agy(AgySubcommand::Switch));
         assert_eq!(
             parse_command("/agy status"),
             Command::Agy(AgySubcommand::Status)
@@ -606,8 +793,44 @@ mod tests {
         );
 
         assert_eq!(
-            parse_command("/agy model gemini-2.5-pro"),
+            parse_command("/agy link"),
+            Command::Agy(AgySubcommand::Link(None))
+        );
+        assert_eq!(
+            parse_command("/agy link user@gmail.com"),
+            Command::Agy(AgySubcommand::Link(Some("user@gmail.com".to_string())))
+        );
+        assert_eq!(
+            parse_command("/agy link clear"),
+            Command::Agy(AgySubcommand::Link(Some("clear".to_string())))
+        );
+        assert_eq!(
+            parse_command("/agy account user@gmail.com"),
+            Command::Agy(AgySubcommand::Account("user@gmail.com".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy models"),
+            Command::Agy(AgySubcommand::ModelList)
+        );
+        assert_eq!(
+            parse_command("/agy model"),
+            Command::Agy(AgySubcommand::ModelList)
+        );
+        assert_eq!(
+            parse_command("/agy model 1"),
+            Command::Agy(AgySubcommand::Model("gemini-2.5-flash".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy model 2"),
             Command::Agy(AgySubcommand::Model("gemini-2.5-pro".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy model pro"),
+            Command::Agy(AgySubcommand::Model("gemini-2.5-pro".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy model gemini-1.5-pro"),
+            Command::Agy(AgySubcommand::Model("gemini-1.5-pro".to_string()))
         );
         assert_eq!(
             parse_command("/agy url http://localhost:38035/v1"),
