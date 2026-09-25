@@ -449,8 +449,7 @@ Maintains an in-memory dictionary of registered tools and translates them to pro
 
 ```rust
 pub struct ToolRegistry {
-    tools: std::collections::HashMap<String, Box<dyn Tool>>,
-}
+    tools: std::collections::HashMap<String, Box<dyn Tool>>,\n}
 
 impl ToolRegistry {
     pub fn new() -> Self { ... }
@@ -516,7 +515,7 @@ pub struct AgentConfig {
 2. **LLM Invocation**: Calls `Provider::complete`.
 3. **Dispatch**:
    - If `ProviderResponse::Text(content)`: Appends `Role::Assistant` message. Iteration completes with final answer.
-   - If `ProviderResponse::ToolCalls(calls)`:\
+   - If `ProviderResponse::ToolCalls(calls)`:
      - Appends assistant message recording tool calls.
      - For each tool call:
        - Parse arguments from JSON string.
@@ -722,5 +721,22 @@ impl Tool for TimeTool {
   - `cargo clippy -- -D warnings` passed with 0 warnings.
   - `cargo fmt --check` passed cleanly.
   - `cargo test` ran 10 tests with 10/10 passing (0 failures).
+- **Next Steps**:
+  - Implement Issue #3 / Phase 3 (`src/core/provider.rs` OpenAI-compatible client).
+
+---
+
+### [2026-09-25] - AGENTS.md Operational Update: Exclusive MCP GitHub Operations
+- **Objective**: Update `AGENTS.md` to establish strict directives requiring all GitHub repository operations (push, commit, issues, comments) to be performed exclusively via MCP tools (`github-mcp-server`) with zero CLI `git`/`gh` usage.
+- **Changes Made**:
+  - Updated [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md):
+    - Added Rule 5: "Exclusively Use MCP for GitHub Operations (Zero CLI `git`/`gh`)".
+    - Added Section 7: "GitHub Operations via MCP Protocol (Mandatory)" including a full MCP tool mapping reference table.
+    - Clarified that local terminal commands are strictly restricted to local Rust compiler/linter/test commands.
+    - Updated Phase 2 status to Completed in roadmap table.
+- **Architectural Decisions**:
+  - Enforce clear boundary between local execution (Rust toolchain) and remote integration (GitHub MCP tools).
+- **Verification**:
+  - Verified Markdown links, formatting, and structural integrity.
 - **Next Steps**:
   - Implement Issue #3 / Phase 3 (`src/core/provider.rs` OpenAI-compatible client).
