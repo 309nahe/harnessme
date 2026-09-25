@@ -449,7 +449,8 @@ Maintains an in-memory dictionary of registered tools and translates them to pro
 
 ```rust
 pub struct ToolRegistry {
-    tools: std::collections::HashMap<String, Box<dyn Tool>>,\n}
+    tools: std::collections::HashMap<String, Box<dyn Tool>>,
+}
 
 impl ToolRegistry {
     pub fn new() -> Self { ... }
@@ -740,3 +741,29 @@ impl Tool for TimeTool {
   - Verified Markdown links, formatting, and structural integrity.
 - **Next Steps**:
   - Implement Issue #3 / Phase 3 (`src/core/provider.rs` OpenAI-compatible client).
+
+---
+
+### [2026-09-25] - Implementation of Phase 3 / Issue #3: Provider Trait & OpenAI-Compatible Client
+- **Objective**: Implement Issue #3 (`Provider` trait, `ProviderResponse` enum, `ProviderError` domain enum, and `OpenAiCompatibleProvider` synchronous HTTP client using `ureq`).
+- **Changes Made**:
+  - Created [`src/core/provider.rs`](file:///home/nana/dev/harness/src/core/provider.rs):
+    - `ProviderError`: strongly typed errors (`HttpError`, `SerializationError`, `ApiError`, `EmptyResponse`) implementing `Display` and `std::error::Error`.
+    - `ProviderResponse`: enum representing either text responses (`ProviderResponse::Text`) or tool invocation requests (`ProviderResponse::ToolCalls`).
+    - `Provider` trait: asynchronous-ready `Send + Sync` trait with `complete(&self, messages: &[Message], tools: &[ToolDefinition]) -> Result<ProviderResponse, ProviderError>`.
+    - `OpenAiCompatibleProvider`: flexible synchronous HTTP client supporting custom base URLs (OpenAI, Ollama, vLLM, LocalAI, Groq), configurable timeouts, temperature, and optional API key bearer authentication.
+    - Added helper `parse_response_json` to parse OpenAI-standard `/chat/completions` JSON responses.
+    - Added 7 unit tests covering error display, request payload formatting (conditional tool schema omission), text response parsing, tool calls parsing, empty choices error handling, builder patterns, and custom mock provider implementations.
+  - Updated [`src/core/types.rs`](file:///home/nana/dev/harness/src/core/types.rs) with `FunctionCall::new` constructor.
+  - Updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
+  - Checked off Phase 3 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) and [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md).
+- **Architectural Decisions**:
+  - Maintained zero dependency bloat: relying strictly on `ureq` + `serde`/`serde_json` + Rust `std`.
+  - Kept network failure paths non-panicking, mapping HTTP status error bodies cleanly into `ProviderError::ApiError`.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 17 tests with 17/17 passing (0 failures).
+- **Next Steps**:
+  - Implement Issue #4 / Phase 4 (`src/core/agent.rs` execution loop and safety limits).
