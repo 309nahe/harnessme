@@ -26,6 +26,7 @@ A lightweight, robust, and extensible Agentic AI Harness in Rust with minimal de
 10. [Error Handling & Edge Cases](#10-error-handling--edge-cases)
 11. [Testing & Verification Strategy](#11-testing--verification-strategy)
 12. [Future Roadmap](#12-future-roadmap)
+13. [Living Changelog & Evolution Ledger](#13-living-changelog--evolution-ledger)
 
 ---
 
@@ -515,7 +516,7 @@ pub struct AgentConfig {
 2. **LLM Invocation**: Calls `Provider::complete`.
 3. **Dispatch**:
    - If `ProviderResponse::Text(content)`: Appends `Role::Assistant` message. Iteration completes with final answer.
-   - If `ProviderResponse::ToolCalls(calls)`:
+   - If `ProviderResponse::ToolCalls(calls)`:\
      - Appends assistant message recording tool calls.
      - For each tool call:
        - Parse arguments from JSON string.
@@ -603,3 +604,123 @@ impl Tool for TimeTool {
 - **Asynchronous & Streaming Pipeline**: SSE (Server-Sent Events) streaming for token-by-token output and tool call chunk reassembly.
 - **State Persistence**: Serialization of `Agent` context to SQLite or disk files.
 - **Sandboxed Execution**: Subprocess/Wasm isolation for dangerous tools.
+
+---
+
+## 13. Living Changelog & Evolution Ledger
+
+> **Mandatory Agent Instruction**: Every autonomous agent or contributor interacting with this codebase must append an entry below whenever implementing a feature, refactoring, fixing a bug, or completing a phase from `PLAN.md`.
+
+### Changelog Format Template
+```markdown
+### [YYYY-MM-DD] - <Agent / Model / Author Name>
+- **Objective**: Brief statement of task.
+- **Changes Made**:
+  - Itemized list of files created, modified, or deleted.
+- **Architectural Decisions**:
+  - Key rationale and trade-offs.
+- **Verification**:
+  - Tests executed and outcomes.
+- **Next Steps**:
+  - Follow-up actions for the next agent/developer.
+```
+
+---
+
+### [2026-09-25] - System Initialization & Comprehensive Documentation
+- **Objective**: Establish the repository foundation, generate `DOCUMENTATION.md`, create `AGENTS.md` as an agent system manual, and prepare GitHub repository `harnessme`.
+- **Changes Made**:
+  - Analyzed [PLAN.md](file:///home/nana/dev/harness/PLAN.md) specifications for the minimal Rust agent harness.
+  - Created [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md): Complete technical reference detailing system architecture, core domain models, tool subsystem, provider interface, agent execution loop, configuration, and testing strategy.
+  - Created [AGENTS.md](file:///home/nana/dev/harness/AGENTS.md): Established agent operating directives, documentation protocols, and architecture deep dives.
+- **Architectural Decisions**:
+  - Standardized on zero-bloat dependencies (`serde`, `serde_json`, `ureq`).
+- **Verification**:
+  - Verified Markdown schemas, file structures, and alignment with [PLAN.md](file:///home/nana/dev/harness/PLAN.md).
+- **Next Steps**:
+  - Add standard project `.gitignore`.
+  - Establish `dev` working branch workflow.
+  - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`).
+
+---
+
+### [2026-09-25] - Project Hygiene & Branching Strategy Setup
+- **Objective**: Add comprehensive `.gitignore` configuration and establish `dev` working branch workflow.
+- **Changes Made**:
+  - Created `.gitignore` ignoring Rust compilation targets (`/target/`), environment files (`.env*`), secrets, IDE configurations, OS artifacts, and scratch directories.
+  - Pushed updates and created the `dev` branch on remote and local workspace.
+  - Established branching model: `main` reserved strictly for stable releases; `dev` used for active feature development and experimentation.
+- **Architectural Decisions**:
+  - Prevent accidental leakage of API keys (`OPENAI_API_KEY`) and secret tokens by strictly ignoring environment credential files.
+  - Adopt git flow where active development happens on `dev`.
+- **Verification**:
+  - Verified untracked files are correctly ignored by git.
+  - Verified `dev` branch creation and remote tracking.
+- **Next Steps**:
+  - Write exhaustive STEP 1 Milestone 1 specifications into `DOCUMENTATION.md`.
+  - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`) on `dev` branch.
+
+---
+
+### [2026-09-25] - STEP 1 Milestone 1 Technical Specification
+- **Objective**: Author exhaustive STEP 1 specifications in `DOCUMENTATION.md` detailing all components, ideas, and technological requirements for the minimal working agent harness.
+- **Changes Made**:
+  - Updated [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md) Section 3: "STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")".
+  - Detailed philosophy (sequential simplicity, zero killer features, make it work first).
+  - Detailed Part 1 (`Cargo.toml` minimal manifest), Part 2 (`src/core/types.rs` IR), Part 3 (`src/core/tool.rs` registry & trait), Part 4 (`src/core/provider.rs` synchronous HTTP OpenAI client), Part 5 (`src/core/agent.rs` execution loop and safety limits), Part 6 (`src/main.rs` terminal REPL), and Part 7 (acceptance criteria).
+- **Architectural Decisions**:
+  - Concrete definition of domain types, traits, error enums, and request schemas before code writing begins.
+  - Retained strict zero-bloat philosophy: standard library + `serde` + `serde_json` + `ureq`.
+- **Verification**:
+  - Markdown layout and schema consistency verified across `PLAN.md`, `DOCUMENTATION.md`, and `AGENTS.md`.
+- **Next Steps**:
+  - Implement Phase 1: `Cargo.toml`, `src/lib.rs`, and `src/core/types.rs`.
+
+---
+
+### [2026-09-25] - Implementation of Phase 1 / Issue #1: Core Domain Types & Manifest
+- **Objective**: Implement Issue #1 (`Cargo.toml` minimal manifest, `src/lib.rs`, `src/core/mod.rs`, and foundational message IR in `src/core/types.rs`).
+- **Changes Made**:
+  - Created [`Cargo.toml`](file:///home/nana/dev/harness/Cargo.toml) with zero-bloat dependencies: `serde` (with derive), `serde_json`, and `ureq` (with json feature).
+  - Created [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) and [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs).
+  - Implemented [`src/core/types.rs`](file:///home/nana/dev/harness/src/core/types.rs) containing:
+    - `Role`: `System`, `User`, `Assistant`, `Tool` (lowercase serde serialization).
+    - `Message`: conversation turn envelope with optional content, tool_calls, and tool_call_id.
+    - `ToolCall`, `FunctionCall`, `ToolDefinition`, `FunctionDefinition`, `ToolResult`.
+    - Ergonomic constructor helper functions (`Message::system`, `Message::user`, `Message::assistant`, `Message::tool`, `ToolCall::new`, `ToolResult::success`, `ToolResult::error`).
+    - 5 comprehensive unit tests covering roundtrip serialization, OpenAI JSON format compatibility, and constructor semantics.
+  - Checked off Phase 1 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md).
+- **Architectural Decisions**:
+  - Kept domain structures strictly pure with `#[serde(skip_serializing_if = "Option::is_none")]` to produce clean standard OpenAI payloads without unwanted null keys.
+  - Implemented `Send + Sync + Clone` across all domain types to allow effortless passing across threads and future async adapters.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 5 tests with 5/5 passing (0 failures).
+- **Next Steps**:
+  - Implement Issue #2 / Phase 2 (`src/core/tool.rs` and reference tools in `src/tools/`).
+
+---
+
+### [2026-09-25] - Implementation of Phase 2 / Issue #2: Tool Trait, Registry & Reference Tools
+- **Objective**: Implement Issue #2 (`Tool` trait, `ToolError` domain enum, in-memory `ToolRegistry`, and reference tools `EchoTool` and `CalculatorTool`).
+- **Changes Made**:
+  - Created [`src/core/tool.rs`](file:///home/nana/dev/harness/src/core/tool.rs):
+    - `ToolError`: strongly typed errors for invalid arguments, execution failure, and tool-not-found, implementing `Display` and `std::error::Error`.
+    - `Tool` trait: `name()`, `description()`, `parameters_schema()`, and `execute()` with `Send + Sync`.
+    - `ToolRegistry`: in-memory hash map management with deterministic schema generation (`definitions()`) and dynamic argument JSON parsing and tool dispatch (`execute()`).
+  - Created [`src/tools/echo.rs`](file:///home/nana/dev/harness/src/tools/echo.rs): reference tool that validates and echoes back a message string.
+  - Created [`src/tools/calculator.rs`](file:///home/nana/dev/harness/src/tools/calculator.rs): arithmetic evaluator supporting basic operations (add, subtract, multiply, divide) with division-by-zero protection.
+  - Created [`src/tools/mod.rs`](file:///home/nana/dev/harness/src/tools/mod.rs) and updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
+  - Checked off Phase 2 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md).
+- **Architectural Decisions**:
+  - Isolated all tool failures in `ToolError` results without throwing panics or unwraps.
+  - Automated JSON deserialization in `ToolRegistry::execute` so callers don't have to duplicate JSON parsing boilerplate.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 10 tests with 10/10 passing (0 failures).
+- **Next Steps**:
+  - Implement Issue #3 / Phase 3 (`src/core/provider.rs` OpenAI-compatible client).
