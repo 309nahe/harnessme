@@ -17,16 +17,24 @@ A lightweight, robust, and extensible Agentic AI Harness in Rust with minimal de
    - [3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)](#36-part-5-agent-execution-loop--safety-limits-srccoreagentrs)
    - [3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)](#37-part-6-cli-interactive-demo--repl-srcmainrs)
    - [3.8 Milestone 1 Acceptance Criteria](#38-milestone-1-acceptance-criteria)
-4. [Core Data Types & Message Protocol](#4-core-data-types--message-protocol)
-5. [Tool Subsystem](#5-tool-subsystem)
-6. [Provider Subsystem](#6-provider-subsystem)
-7. [Agent Execution Engine](#7-agent-execution-engine)
-8. [Configuration & Environment Reference](#8-configuration--environment-reference)
-9. [Extension & Integration Guide](#9-extension--integration-guide)
-10. [Error Handling & Edge Cases](#10-error-handling--edge-cases)
-11. [Testing & Verification Strategy](#11-testing--verification-strategy)
-12. [Future Roadmap](#12-future-roadmap)
-13. [Living Changelog & Evolution Ledger](#13-living-changelog--evolution-ledger)
+4. [STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities](#4-step-2-milestone-2--observability-memory-pruning--filesystem-capabilities)
+   - [4.1 Philosophy & Architectural Objectives](#41-philosophy--architectural-objectives)
+   - [4.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs`, `src/core/provider.rs`)](#42-part-1-token-usage-tracking--provider-metadata-srccoretypesrs-srccoreproviderrs)
+   - [4.3 Part 2: Agent Event Hooks & Lifecycle Observers (`src/core/agent.rs`)](#43-part-2-agent-event-hooks--lifecycle-observers-srccoreagentrs)
+   - [4.4 Part 3: Standard Sandboxed Filesystem Tools (`src/tools/fs.rs`)](#44-part-3-standard-sandboxed-filesystem-tools-srctoolsfsrs)
+   - [4.5 Part 4: Conversation Context Pruning & History Retention (`src/core/agent.rs`)](#45-part-4-conversation-context-pruning--history-retention-srccoreagentrs)
+   - [4.6 Part 5: CLI REPL Observability & Diagnostic Commands (`src/main.rs`)](#46-part-5-cli-repl-observability--diagnostic-commands-srcmainrs)
+   - [4.7 Milestone 2 Acceptance Criteria](#47-milestone-2-acceptance-criteria)
+5. [Core Data Types & Message Protocol Deep-Dive](#5-core-data-types--message-protocol-deep-dive)
+6. [Tool Subsystem](#6-tool-subsystem)
+7. [Provider Subsystem](#7-provider-subsystem)
+8. [Agent Execution Engine](#8-agent-execution-engine)
+9. [Configuration & Environment Reference](#9-configuration--environment-reference)
+10. [Extension & Integration Guide](#10-extension--integration-guide)
+11. [Error Handling & Edge Cases](#11-error-handling--edge-cases)
+12. [Testing & Verification Strategy](#12-testing--verification-strategy)
+13. [Future Roadmap](#13-future-roadmap)
+14. [Living Changelog & Evolution Ledger](#14-living-changelog--evolution-ledger)
 
 ---
 
@@ -351,7 +359,144 @@ Before declaring Milestone 1 complete, the following criteria must be satisfied:
 
 ---
 
-## 4. Core Data Types & Message Protocol Deep-Dive
+## 4. STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities
+
+### 4.1 Philosophy & Architectural Objectives
+
+With the foundation of Milestone 1 in place ("make it work"), Milestone 2 elevates the harness into a production-ready autonomous runtime without introducing unnecessary architectural bloat.
+
+- **Atomic 5-Phase Scoping**: Milestone 2 is strictly partitioned into 5 independent, single-focus issues (Token Metrics, Lifecycle Hooks, Filesystem Tools, Context Pruning, REPL Observability).
+- **Non-Invasive Observability**: Decouple tracing and event streaming through the `AgentHook` trait (Observer pattern) rather than hardcoding stdout prints into the agent core.
+- **Defensive Resource Management**: Track token budgets per step and lifetime, and prevent unbounded context growth via deterministic sliding window retention while strictly pinning initial system directives.
+- **Sandboxed File Operations**: Equip the agent with essential read/write capabilities guarded by root-jail path checks to prevent unauthorized path traversal outside the designated workspace.
+
+---
+
+### 4.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs`, `src/core/provider.rs`)
+
+#### The Idea
+Autonomous agents can rapidly consume tokens during multi-turn loops. The harness needs explicit accounting of prompt, completion, and total tokens per LLM completion, aggregating cumulative session totals on the `Agent`.
+
+#### Technological Specifications
+
+1. **`Usage` Domain Struct (`src/core/types.rs`)**:
+   ```rust
+   #[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize)]
+   pub struct Usage {
+       pub prompt_tokens: usize,
+       pub completion_tokens: usize,
+       pub total_tokens: usize,
+   }
+   ```
+2. **`ProviderResponse` Enhancement (`src/core/provider.rs`)**:
+   - Extend `ProviderResponse` to include optional completion usage:
+     - `ProviderResponse::Text { content: String, usage: Option<Usage> }`
+     - `ProviderResponse::ToolCalls { calls: Vec<ToolCall>, usage: Option<Usage> }`
+   - Update `OpenAiCompatibleProvider::parse_response_json` to extract `usage.prompt_tokens`, `usage.completion_tokens`, and `usage.total_tokens` when present in the endpoint JSON payload.
+3. **Session Usage Aggregation (`src/core/agent.rs`)**:
+   - Add `cumulative_usage: Usage` to `Agent`.
+   - Expose `agent.cumulative_usage() -> Usage` and `agent.last_turn_usage() -> Option<Usage>`.
+
+---
+
+### 4.3 Part 2: Agent Event Hooks & Lifecycle Observers (`src/core/agent.rs`)
+
+#### The Idea
+Callers (such as CLI interfaces, web servers, or evaluation harnesses) need visibility into intermediate agent thought steps and tool invocations without altering the core loop logic.
+
+#### Technological Specifications
+
+1. **`AgentHook` Trait (`src/core/agent.rs`)**:
+   ```rust
+   pub trait AgentHook: Send + Sync {
+       fn on_step_start(&self, step: usize, messages: &[Message]) {}
+       fn on_tool_call(&self, step: usize, call: &ToolCall) {}
+       fn on_tool_result(&self, step: usize, call: &ToolCall, result: &str, is_error: bool) {}
+       fn on_step_complete(&self, step: usize, response: &str, usage: Option<Usage>) {}
+       fn on_error(&self, step: usize, error: &AgentError) {}
+   }
+   ```
+2. **Hook Management & Dispatch**:
+   - `AgentConfig::with_hook(mut self, hook: Arc<dyn AgentHook>) -> Self`
+   - `Agent::add_hook(&mut self, hook: Arc<dyn AgentHook>)`
+   - In `Agent::step()` and `Agent::run()`, trigger the respective callback hooks at each lifecycle event safely.
+
+---
+
+### 4.4 Part 3: Standard Sandboxed Filesystem Tools (`src/tools/fs.rs`)
+
+#### The Idea
+Agents require standard primitives to inspect and modify project workspaces. File operations must be strictly sandboxed within a configured base directory to prevent arbitrary directory traversal (`../`).
+
+#### Technological Specifications
+
+1. **`ReadFileTool`**:
+   - Parameters schema: `{"path": "string"}`.
+   - Validates that the canonicalized target path resides within the configured base directory root.
+   - Returns file contents as UTF-8 string, or returns `ToolError::ExecutionFailed` on missing file / out-of-jail paths.
+2. **`WriteFileTool`**:
+   - Parameters schema: `{"path": "string", "content": "string"}`.
+   - Validates sandboxed boundary; creates parent directories if needed and writes UTF-8 text.
+3. **Module & Re-exports**:
+   - Located in `src/tools/fs.rs`, re-exported under `src/tools/mod.rs` and `src/lib.rs`.
+
+---
+
+### 4.5 Part 4: Conversation Context Pruning & History Retention (`src/core/agent.rs`)
+
+#### The Idea
+Long-running conversations or loops with extensive tool payloads can exceed model context limits. The agent must support automated history pruning that enforces a maximum message window while strictly preserving the initial `Role::System` directive.
+
+#### Technological Specifications
+
+1. **`ContextPolicy` Configuration**:
+   ```rust
+   #[derive(Debug, Clone)]
+   pub enum ContextPolicy {
+       /// Keep all messages without pruning.
+       Unbounded,
+       /// Keep at most `max_messages` turns, always preserving the initial System message.
+       SlidingWindow { max_messages: usize },
+   }
+   ```
+2. **Pruning Algorithm (`Agent::prune_history(&mut self)`)**:
+   - When history exceeds `max_messages` under `SlidingWindow`:
+     - Keep initial `Role::System` prompt at index 0 (if present).
+     - Retain the most recent `(max_messages - 1)` messages.
+     - Safely drop older intermediate turns without breaking tool-call / tool-result sequence validity.
+
+---
+
+### 4.6 Part 5: CLI REPL Observability & Diagnostic Commands (`src/main.rs`)
+
+#### The Idea
+Surface the new Milestone 2 features directly to human operators in the interactive REPL with live tool execution indicators, token usage tracking, and diagnostic commands.
+
+#### Technological Specifications
+
+1. **Terminal Observer Hook (`CliObserverHook`)**:
+   - Implements `AgentHook` to print clear, formatted indicators during execution:
+     - `[tool-call] ⚙ Invoking calculator with {"a": 20, "b": 22, "op": "add"}...`
+     - `[tool-result] ✓ Result: 42`
+2. **Diagnostic REPL Commands**:
+   - `/stats` or `/tokens`: Displays lifetime prompt, completion, total token usage, and step counts.
+   - `/tools`: Lists all active registered tools and descriptions.
+   - `/help`: Displays summary of available interactive terminal commands.
+3. **Workspace File Tool Integration**:
+   - Configures `ReadFileTool` and `WriteFileTool` targeting the current working directory.
+
+---
+
+### 4.7 Milestone 2 Acceptance Criteria
+
+1. **Zero Bloat Preserved**: Only `serde`, `serde_json`, and `ureq` remain as external runtime dependencies.
+2. **100% Test Suite Pass**: All new modules (`Usage`, `AgentHook`, `fs`, `ContextPolicy`) backed by thorough unit tests.
+3. **Deterministic Safety**: Filesystem tools cannot read/write outside designated sandboxes; context pruner preserves system instructions.
+4. **End-to-End CLI Verification**: REPL outputs live tool logs, executes filesystem tools safely, and reports token counts on `/stats`.
+
+---
+
+## 5. Core Data Types & Message Protocol Deep-Dive
 
 Located in `src/core/types.rs`, these types form the universal domain language for conversation turns and tool invocations.
 
@@ -422,7 +567,7 @@ pub struct FunctionDefinition {
 
 ---
 
-## 5. Tool Subsystem
+## 6. Tool Subsystem
 
 The tool subsystem provides a uniform interface for defining, validating, registering, and executing tools.
 
@@ -463,7 +608,7 @@ impl ToolRegistry {
 
 ---
 
-## 6. Provider Subsystem
+## 7. Provider Subsystem
 
 The provider layer decouples the harness from specific LLM endpoints.
 
@@ -498,7 +643,7 @@ Implements the `Provider` trait for standard OpenAI chat completion endpoints (`
 
 ---
 
-## 7. Agent Execution Engine
+## 8. Agent Execution Engine
 
 ### Configuration (`AgentConfig`)
 ```rust
@@ -567,7 +712,7 @@ impl Agent {
 
 ---
 
-## 8. Configuration & Environment Reference
+## 9. Configuration & Environment Reference
 
 | Environment Variable | Description | Default |
 |---|---|---|
@@ -579,7 +724,7 @@ impl Agent {
 
 ---
 
-## 9. Extension & Integration Guide
+## 10. Extension & Integration Guide
 
 ### Creating a Custom Tool
 
@@ -614,7 +759,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 10. Error Handling & Edge Cases
+## 11. Error Handling & Edge Cases
 
 1. **Malformed JSON Arguments**: When an LLM outputs broken JSON in `ToolCall::arguments`, the harness wraps the parse failure into a `ToolError::InvalidArguments` and feeds it back to the model as a `Role::Tool` message.
 2. **Unknown Tool Invocations**: If the LLM invents a non-existent tool name, a `ToolError::ToolNotFound` is returned in context.
@@ -623,7 +768,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 11. Testing & Verification Strategy
+## 12. Testing & Verification Strategy
 
 - **Unit Tests**:
   - Serialization/deserialization tests for `Role`, `Message`, `ToolCall`, `ToolDefinition`.
@@ -635,7 +780,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 12. Future Roadmap
+## 13. Future Roadmap
 
 - **Token & Context Window Pruning**: Sliding window algorithms to discard older conversation turns while retaining system directives.
 - **Asynchronous & Streaming Pipeline**: SSE (Server-Sent Events) streaming for token-by-token output and tool call chunk reassembly.
@@ -644,7 +789,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 13. Living Changelog & Evolution Ledger
+## 14. Living Changelog & Evolution Ledger
 
 > **Mandatory Agent Instruction**: Every autonomous agent or contributor interacting with this codebase must append an entry below whenever implementing a feature, refactoring, fixing a bug, or completing a phase from `PLAN.md`.
 
@@ -881,4 +1026,25 @@ impl Tool for TimeTool {
   - `cargo fmt --check` passed cleanly.
   - `cargo test` expanded from 23 to 31 tests with 31/31 passing (100% success rate).
 - **Next Steps**:
-  - Codebase is clean, hardened, and ready for planning Milestone 2 / new feature issues.
+  - Plan Milestone 2 and open atomic issues #6 through #10 tagged 'MS2'.
+
+---
+
+### [2026-09-25] - STEP 2: Milestone 2 Architectural Specification & Issue Planning
+- **Objective**: Author exhaustive specifications for Milestone 2 (Observability, Context Management & Filesystem Capabilities) in `DOCUMENTATION.md`, partition into 5 atomic issues, and prepare issue tickets.
+- **Changes Made**:
+  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md):
+    - Added Section 4: "STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities".
+    - Detailed Part 1: Token Usage Tracking (`Usage` type, OpenAI payload extraction, session metrics on `Agent`).
+    - Detailed Part 2: Agent Event Hooks (`AgentHook` trait and lifecycle observer callbacks for tracing/logging/UI).
+    - Detailed Part 3: Sandboxed Filesystem Tools (`ReadFileTool`, `WriteFileTool` with root-jail traversal protections).
+    - Detailed Part 4: Context Retention & Pruning (`ContextPolicy` sliding window preserving initial `Role::System` directive).
+    - Detailed Part 5: CLI REPL Observability & Diagnostics (Terminal hook output, `/stats`, `/tokens`, `/help`, and filesystem tools integration).
+  - Synchronized [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) with Milestone 2 roadmap.
+- **Architectural Decisions**:
+  - Maintained zero runtime dependency bloat (pure standard library + `serde` + `serde_json` + `ureq`).
+  - Separated concerns cleanly: observability decoupled via Observer pattern (`AgentHook`), token accounting separated into `Usage`, and security bounds enforced in `fs` tools.
+- **Verification**:
+  - Verified Markdown layout, table of contents links, and schema definitions.
+- **Next Steps**:
+  - Open 5 atomic GitHub issues for Milestone 2 tagged `MS2` and `agent-ready`.

@@ -103,7 +103,8 @@ To keep compile times fast and binary sizes small, we keep external crates to th
      - If response has tool calls: execute each tool via `ToolRegistry`, record tool outputs as `Role::Tool` messages, repeat loop.
      - If response is text only: append assistant message and return final response.
   4. Enforce `max_iterations` counter to prevent infinite tool-calling loops.
-- [x] Handle tool execution errors gracefully (feed errors back to LLM context for self-correction).
+  - [x] Handle tool execution errors gracefully (feed errors back to LLM context for self-correction).
+
 
 ### Phase 5: Verification & CLI Demo
 - [x] Create a minimal `main.rs` binary.
@@ -113,9 +114,43 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 
 ---
 
-## 5. Potential Future Enhancements (Post-MVP)
+## 5. Milestone 2: Observability, Memory Pruning & Filesystem Capabilities
 
-- **Streaming Support**: Stream token generation and tool call chunks.
-- **Context Pruning**: Sliding window or summarization strategy when conversation approaches token limits.
-- **Pluggable Persistence**: Save and restore conversation states across sessions.
-- **Sandboxed Execution**: Safe execution boundaries for command-line or filesystem tools.
+### Phase 6 (MS2 - Issue #6): Token Usage Tracking & Provider Metadata
+- [ ] Define `Usage` struct in `src/core/types.rs` (`prompt_tokens`, `completion_tokens`, `total_tokens`).
+- [ ] Extract completion token usage in `OpenAiCompatibleProvider` and include in `ProviderResponse`.
+- [ ] Aggregate lifetime and per-turn token metrics on `Agent`.
+- [ ] Add unit tests for token usage parsing and agent aggregation.
+
+### Phase 7 (MS2 - Issue #7): Agent Lifecycle Event Hooks
+- [ ] Define `AgentHook` trait in `src/core/agent.rs` (`on_step_start`, `on_tool_call`, `on_tool_result`, `on_step_complete`, `on_error`).
+- [ ] Add hook registration to `AgentConfig` and `Agent`.
+- [ ] Safely dispatch lifecycle hooks during `Agent::step` and `Agent::run`.
+- [ ] Add unit tests for hook invocation sequences during text and tool turns.
+
+### Phase 8 (MS2 - Issue #8): Standard Sandboxed Filesystem Tools
+- [ ] Implement `ReadFileTool` in `src/tools/fs.rs` with base directory jail validation.
+- [ ] Implement `WriteFileTool` in `src/tools/fs.rs` with directory creation and root boundary checks.
+- [ ] Re-export filesystem tools in `src/tools/mod.rs` and `src/lib.rs`.
+- [ ] Add unit tests for reading, writing, missing files, and path traversal escape attempts (`../`).
+
+### Phase 9 (MS2 - Issue #9): Conversation Context Pruning & History Retention
+- [ ] Define `ContextPolicy` (`Unbounded`, `SlidingWindow { max_messages }`) in `src/core/agent.rs`.
+- [ ] Implement history pruning algorithm preserving initial `Role::System` directive.
+- [ ] Integrate automated pruning before provider calls in `Agent::step`.
+- [ ] Add unit tests for sliding window pruning, system prompt retention, and history truncation.
+
+### Phase 10 (MS2 - Issue #10): CLI REPL Observability & Diagnostic Commands
+- [ ] Implement `CliObserverHook` in `src/main.rs` to print live tool execution and completion logs.
+- [ ] Add `/stats` / `/tokens` REPL command to display cumulative token usage and step counts.
+- [ ] Add `/tools` and `/help` REPL diagnostic commands.
+- [ ] Register `ReadFileTool` and `WriteFileTool` in REPL workspace.
+
+---
+
+## 6. Potential Future Enhancements (Post-Milestone 2)
+
+- **Streaming Support**: Server-Sent Events (SSE) token streaming and delta chunk reassembly.
+- **Pluggable Persistence**: Save and restore conversation states to SQLite or JSON files.
+- **Subprocess Execution**: Sandboxed shell/command execution tools.
+- **Multi-Agent Orchestration**: Router / Supervisor agent coordinating specialist sub-agents.
