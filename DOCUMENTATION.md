@@ -6,39 +6,215 @@ A lightweight, robust, and extensible Agentic AI Harness in Rust with minimal de
 
 ## Table of Contents
 
-1. [Introduction & Architectural Goals](#1-introduction--architectural-goals)
-2. [High-Level Architecture](#2-high-level-architecture)
-3. [STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")](#3-step-1-milestone-1--minimal-working-agent-harness-make-it-work-first)
-   - [3.1 Philosophy: Make It Work, Make It Perfect Later](#31-philosophy-make-it-work-make-it-perfect-later)
-   - [3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)](#32-part-1-manifest--minimal-dependencies-cargotoml)
-   - [3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)](#33-part-2-core-domain-models--message-ir-srccoretypesrs)
-   - [3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)](#34-part-3-tool-abstraction--registry-srccoretoolrs)
-   - [3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)](#35-part-4-provider-abstraction--http-client-srccoreproviderrs)
-   - [3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)](#36-part-5-agent-execution-loop--safety-limits-srccoreagentrs)
-   - [3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)](#37-part-6-cli-interactive-demo--repl-srcmainrs)
-   - [3.8 Milestone 1 Acceptance Criteria](#38-milestone-1-acceptance-criteria)
-4. [STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities](#4-step-2-milestone-2--observability-memory-pruning--filesystem-capabilities)
-   - [4.1 Philosophy & Architectural Objectives](#41-philosophy--architectural-objectives)
-   - [4.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs`, `src/core/provider.rs`)](#42-part-1-token-usage-tracking--provider-metadata-srccoretypesrs-srccoreproviderrs)
-   - [4.3 Part 2: Agent Event Hooks & Lifecycle Observers (`src/core/agent.rs`)](#43-part-2-agent-event-hooks--lifecycle-observers-srccoreagentrs)
-   - [4.4 Part 3: Standard Sandboxed Filesystem Tools (`src/tools/fs.rs`)](#44-part-3-standard-sandboxed-filesystem-tools-srctoolsfsrs)
-   - [4.5 Part 4: Conversation Context Pruning & History Retention (`src/core/agent.rs`)](#45-part-4-conversation-context-pruning--history-retention-srccoreagentrs)
-   - [4.6 Part 5: CLI REPL Observability & Diagnostic Commands (`src/main.rs`)](#46-part-5-cli-repl-observability--diagnostic-commands-srcmainrs)
-   - [4.7 Milestone 2 Acceptance Criteria](#47-milestone-2-acceptance-criteria)
-5. [Core Data Types & Message Protocol Deep-Dive](#5-core-data-types--message-protocol-deep-dive)
-6. [Tool Subsystem](#6-tool-subsystem)
-7. [Provider Subsystem](#7-provider-subsystem)
-8. [Agent Execution Engine](#8-agent-execution-engine)
-9. [Configuration & Environment Reference](#9-configuration--environment-reference)
-10. [Extension & Integration Guide](#10-extension--integration-guide)
-11. [Error Handling & Edge Cases](#11-error-handling--edge-cases)
-12. [Testing & Verification Strategy](#12-testing--verification-strategy)
-13. [Future Roadmap](#13-future-roadmap)
-14. [Living Changelog & Evolution Ledger](#14-living-changelog--evolution-ledger)
+1. [Quickstart & Usage Guide](#1-quickstart--usage-guide)
+   - [1.1 Prerequisites & Compilation](#11-prerequisites--compilation)
+   - [1.2 Launching the Interactive CLI REPL](#12-launching-the-interactive-cli-repl)
+   - [1.3 Environment Variables Reference](#13-environment-variables-reference)
+   - [1.4 REPL Commands & Example Workflows](#14-repl-commands--example-workflows)
+   - [1.5 Using HarnessMe as a Library (Rust API)](#15-using-harnessme-as-a-library-rust-api)
+2. [Introduction & Architectural Goals](#2-introduction--architectural-goals)
+3. [High-Level Architecture](#3-high-level-architecture)
+4. [STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")](#4-step-1-milestone-1--minimal-working-agent-harness-make-it-work-first)
+   - [4.1 Philosophy: Make It Work, Make It Perfect Later](#41-philosophy-make-it-work-make-it-perfect-later)
+   - [4.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)](#42-part-1-manifest--minimal-dependencies-cargotoml)
+   - [4.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)](#43-part-2-core-domain-models--message-ir-srccoretypesrs)
+   - [4.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)](#44-part-3-tool-abstraction--registry-srccoretoolrs)
+   - [4.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)](#45-part-4-provider-abstraction--http-client-srccoreproviderrs)
+   - [4.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)](#46-part-5-agent-execution-loop--safety-limits-srccoreagentrs)
+   - [4.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)](#47-part-6-cli-interactive-demo--repl-srcmainrs)
+   - [4.8 Milestone 1 Acceptance Criteria](#48-milestone-1-acceptance-criteria)
+5. [STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities](#5-step-2-milestone-2--observability-memory-pruning--filesystem-capabilities)
+   - [5.1 Philosophy & Architectural Objectives](#51-philosophy--architectural-objectives)
+   - [5.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs`, `src/core/provider.rs`)](#52-part-1-token-usage-tracking--provider-metadata-srccoretypesrs-srccoreproviderrs)
+   - [5.3 Part 2: Agent Event Hooks & Lifecycle Observers (`src/core/agent.rs`)](#53-part-2-agent-event-hooks--lifecycle-observers-srccoreagentrs)
+   - [5.4 Part 3: Standard Sandboxed Filesystem Tools (`src/tools/fs.rs`)](#54-part-3-standard-sandboxed-filesystem-tools-srctoolsfsrs)
+   - [5.5 Part 4: Conversation Context Pruning & History Retention (`src/core/agent.rs`)](#55-part-4-conversation-context-pruning--history-retention-srccoreagentrs)
+   - [5.6 Part 5: CLI REPL Observability & Diagnostic Commands (`src/main.rs`)](#56-part-5-cli-repl-observability--diagnostic-commands-srcmainrs)
+   - [5.7 Milestone 2 Acceptance Criteria](#57-milestone-2-acceptance-criteria)
+6. [Core Data Types & Message Protocol Deep-Dive](#6-core-data-types--message-protocol-deep-dive)
+7. [Tool Subsystem](#7-tool-subsystem)
+8. [Provider Subsystem](#8-provider-subsystem)
+9. [Agent Execution Engine](#9-agent-execution-engine)
+10. [Configuration & Environment Reference](#10-configuration--environment-reference)
+11. [Extension & Integration Guide](#11-extension--integration-guide)
+12. [Error Handling & Edge Cases](#12-error-handling--edge-cases)
+13. [Testing & Verification Strategy](#13-testing--verification-strategy)
+14. [Future Roadmap](#14-future-roadmap)
+15. [Living Changelog & Evolution Ledger](#15-living-changelog--evolution-ledger)
 
 ---
 
-## 1. Introduction & Architectural Goals
+## 1. Quickstart & Usage Guide
+
+HarnessMe provides both an interactive terminal CLI (REPL) for hands-on agent experimentation and a decoupled Rust library crate to embed autonomous agents into your own systems and services.
+
+---
+
+### 1.1 Prerequisites & Compilation
+
+#### Requirements
+- **Rust Toolchain**: Rust 1.70+ (edition 2021) with `cargo` installed.
+- Check your environment:
+  ```bash
+  rustc --version
+  cargo --version
+  ```
+
+#### Building the Project
+- **Debug build** (fast incremental compilation):
+  ```bash
+  cargo build
+  ```
+- **Optimized Release build**:
+  ```bash
+  cargo build --release
+  ```
+- **Run the Complete Test Suite**:
+  ```bash
+  cargo test
+  ```
+- **Linting & Code Formatting**:
+  ```bash
+  cargo clippy -- -D warnings
+  cargo fmt --check
+  ```
+
+---
+
+### 1.2 Launching the Interactive CLI REPL
+
+The CLI entrypoint (`src/main.rs`) provides an interactive REPL with live tool execution, multi-turn conversation memory, and error self-correction.
+
+#### Option A: Running with OpenAI Models (Cloud)
+Set your OpenAI API key and start the interactive terminal session:
+```bash
+export OPENAI_API_KEY="sk-proj-your-actual-api-key"
+export HARNESS_MODEL="gpt-4o-mini" # Optional, defaults to gpt-4o-mini
+cargo run
+```
+
+#### Option B: Running with Local Open-Source Models (Ollama, vLLM, LocalAI)
+You can run HarnessMe against fully local, offline LLMs using OpenAI-compatible endpoints without an API key:
+
+1. Start your local inference server (e.g., [Ollama](https://ollama.com)):
+   ```bash
+   ollama run llama3.1
+   ```
+2. Configure the endpoint URL and model name, then launch:
+   ```bash
+   export OPENAI_BASE_URL="http://localhost:11434/v1"
+   export HARNESS_MODEL="llama3.1"
+   cargo run
+   ```
+
+#### Option C: Running with Alternative Hosted Providers (Groq, Mistral, DeepSeek)
+```bash
+export OPENAI_BASE_URL="https://api.groq.com/openai/v1"
+export OPENAI_API_KEY="gsk_..."
+export HARNESS_MODEL="llama-3.1-70b-versatile"
+cargo run
+```
+
+---
+
+### 1.3 Environment Variables Reference
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `OPENAI_API_KEY` | String | `None` | Bearer token for endpoint authentication. Required for OpenAI, optional for local Ollama/vLLM endpoints. |
+| `OPENAI_BASE_URL` | URL | `https://api.openai.com/v1` | Base endpoint URL for the chat completions API. |
+| `HARNESS_MODEL` | String | `gpt-4o-mini` | Target model identifier passed to `/chat/completions`. |
+| `HARNESS_SYSTEM_PROMPT` | String | *"You are a helpful and concise AI assistant..."* | Custom system directives defining the agent's behavior and tone. |
+| `HARNESS_MAX_STEPS` | Integer | `10` | Maximum iterative tool execution turns before halting (runaway loop guardrail). |
+| `HARNESS_TEMPERATURE` | Float | `0.7` | Model sampling temperature (e.g. `0.0` for deterministic logic, `0.7` for general tasks). |
+
+---
+
+### 1.4 REPL Commands & Example Workflows
+
+Once the REPL starts, you will see the interactive prompt:
+```text
+====================================================
+             HarnessMe Agent Interactive CLI         
+====================================================
+ Model        : gpt-4o-mini
+ Base URL     : https://api.openai.com/v1
+ API Key      : Configured (hidden)
+ Max Steps    : 10
+ Temperature  : 0.7
+----------------------------------------------------
+ Registered Tools: calculator, echo
+ Commands: 'exit'/'quit' to exit, 'clear' to reset history, 'history' to inspect.
+====================================================
+
+user > 
+```
+
+#### Special Terminal Commands
+- **`history`**: Displays all turns in the active conversation memory, including intermediate `Role::Tool` calls, tool payloads, and assistant messages.
+- **`clear`** (or **`reset`**): Flushes conversation memory and starts a fresh conversation.
+- **`exit`** (or **`quit`**): Gracefully shuts down the REPL session.
+
+#### Example Conversational Workflow
+```text
+user > Hi! What tools do you have available?
+agent > I have access to a calculator tool for arithmetic and an echo tool.
+
+user > Calculate (125 * 8.5) / 2 and tell me the result.
+agent > The result of (125 * 8.5) / 2 is 531.25.
+
+user > history
+system > Conversation history (6 turns):
+  [0] system: You are a helpful and concise AI assistant equipped with tools...
+  [1] user: Hi! What tools do you have available?
+  [2] assistant: I have access to a calculator tool for arithmetic and an echo tool.
+  [3] user: Calculate (125 * 8.5) / 2 and tell me the result.
+  [4] assistant (tool_calls: calculator): [No text content]
+  [5] tool (call_id: call_xyz123): 531.25
+  [6] assistant: The result of (125 * 8.5) / 2 is 531.25.
+```
+
+---
+
+### 1.5 Using HarnessMe as a Library (Rust API)
+
+You can embed HarnessMe directly in your Rust applications:
+
+```rust
+use harnessme::{
+    Agent, AgentConfig, CalculatorTool, EchoTool,
+    OpenAiCompatibleProvider, ToolRegistry,
+};
+
+fn main() -> Result<(), Box<dyn std::error::Error>> {
+    // 1. Initialize tool registry and register desired tools
+    let mut registry = ToolRegistry::new();
+    registry.register(EchoTool);
+    registry.register(CalculatorTool);
+
+    // 2. Configure provider (OpenAI, Ollama, etc.)
+    let api_key = std::env::var("OPENAI_API_KEY").ok();
+    let provider = OpenAiCompatibleProvider::new("gpt-4o-mini", api_key)
+        .with_base_url("https://api.openai.com/v1")
+        .with_temperature(0.2);
+
+    // 3. Configure agent settings and guardrails
+    let config = AgentConfig::new()
+        .with_system_prompt("You are an autonomous engineering assistant.")
+        .with_max_iterations(10);
+
+    // 4. Instantiate and run the agent
+    let mut agent = Agent::with_config(provider, registry, config);
+    let answer = agent.run("What is 42 * 100?")?;
+
+    println!("Agent Answer: {answer}");
+    Ok(())
+}
+```
+
+---
+
+## 2. Introduction & Architectural Goals
 
 **HarnessMe** is an AI agent harness written in Rust. It provides the core runtime engine that allows Large Language Models (LLMs) to function as autonomous agents: accepting user prompts, managing conversation history, reasoning about available tools, executing tool calls in a secure/controlled environment, and iterating until the task is resolved.
 
@@ -52,7 +228,7 @@ A lightweight, robust, and extensible Agentic AI Harness in Rust with minimal de
 
 ---
 
-## 2. High-Level Architecture
+## 3. High-Level Architecture
 
 The harness is centered around the **Agent Loop**, connecting the Conversation State, the Provider (LLM), and the Tool Registry.
 
@@ -93,9 +269,9 @@ src/
 
 ---
 
-## 3. STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")
+## 4. STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")
 
-### 3.1 Philosophy: Make It Work, Make It Perfect Later
+### 4.1 Philosophy: Make It Work, Make It Perfect Later
 
 The sole objective of Milestone 1 is to build a functional, reliable end-to-end agent harness without premature optimization or unnecessary complexity. 
 
@@ -105,7 +281,7 @@ The sole objective of Milestone 1 is to build a functional, reliable end-to-end 
 
 ---
 
-### 3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)
+### 4.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)
 
 #### The Idea
 Milestone 1 must compile in under 5 seconds with zero dependency bloat. We avoid large async runtimes (Tokio/Actix) and heavy utility crates. The harness relies exclusively on the Rust standard library plus two essential crates: one for JSON serialization and one for HTTP requests.
@@ -131,7 +307,7 @@ ureq = { version = "2.10", features = ["json"] }
 
 ---
 
-### 3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)
+### 4.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)
 
 #### The Idea
 We need a unified intermediate representation (IR) that models all conversational turns. We match the OpenAI function-calling standard because it is the de-facto protocol implemented by OpenAI, Ollama, vLLM, Groq, Mistral, and LocalAI.
@@ -163,7 +339,7 @@ We need a unified intermediate representation (IR) that models all conversationa
 
 ---
 
-### 3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)
+### 4.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)
 
 #### The Idea
 The agent engine must not be tightly coupled to any specific tool. Any capability (calculator, file reader, web fetcher) must implement a common trait. A registry manages registration, provides schema definitions to the provider, and handles dynamic dispatch.
@@ -202,7 +378,7 @@ The agent engine must not be tightly coupled to any specific tool. Any capabilit
 
 ---
 
-### 3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)
+### 4.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)
 
 #### The Idea
 Decouple the agent loop from the LLM network layer. The provider accepts the current history of messages and available tool definitions, makes an HTTP POST request to `/v1/chat/completions`, and returns either final text or requested tool calls.
@@ -267,7 +443,7 @@ Decouple the agent loop from the LLM network layer. The provider accepts the cur
 
 ---
 
-### 3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)
+### 4.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)
 
 #### The Idea
 The agent manages conversational memory and drives the recursive loop: send messages to provider $\rightarrow$ check response $\rightarrow$ execute tools $\rightarrow$ record outputs $\rightarrow$ repeat until the model answers in text or hits the iteration guardrail.
@@ -323,7 +499,7 @@ The agent manages conversational memory and drives the recursive loop: send mess
 
 ---
 
-### 3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)
+### 4.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)
 
 #### The Idea
 Provide an immediate, human-usable terminal binary to interact with the agent, test tool calls in real time, and verify model behavior.
@@ -344,7 +520,7 @@ Provide an immediate, human-usable terminal binary to interact with the agent, t
 
 ---
 
-### 3.8 Milestone 1 Acceptance Criteria
+### 4.8 Milestone 1 Acceptance Criteria
 
 Before declaring Milestone 1 complete, the following criteria must be satisfied:
 
@@ -359,9 +535,9 @@ Before declaring Milestone 1 complete, the following criteria must be satisfied:
 
 ---
 
-## 4. STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities
+## 5. STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities
 
-### 4.1 Philosophy & Architectural Objectives
+### 5.1 Philosophy & Architectural Objectives
 
 With the foundation of Milestone 1 in place ("make it work"), Milestone 2 elevates the harness into a production-ready autonomous runtime without introducing unnecessary architectural bloat.
 
@@ -372,7 +548,7 @@ With the foundation of Milestone 1 in place ("make it work"), Milestone 2 elevat
 
 ---
 
-### 4.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs`, `src/core/provider.rs`)
+### 5.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs`, `src/core/provider.rs`)
 
 #### The Idea
 Autonomous agents can rapidly consume tokens during multi-turn loops. The harness needs explicit accounting of prompt, completion, and total tokens per LLM completion, aggregating cumulative session totals on the `Agent`.
@@ -399,7 +575,7 @@ Autonomous agents can rapidly consume tokens during multi-turn loops. The harnes
 
 ---
 
-### 4.3 Part 2: Agent Event Hooks & Lifecycle Observers (`src/core/agent.rs`)
+### 5.3 Part 2: Agent Event Hooks & Lifecycle Observers (`src/core/agent.rs`)
 
 #### The Idea
 Callers (such as CLI interfaces, web servers, or evaluation harnesses) need visibility into intermediate agent thought steps and tool invocations without altering the core loop logic.
@@ -423,7 +599,7 @@ Callers (such as CLI interfaces, web servers, or evaluation harnesses) need visi
 
 ---
 
-### 4.4 Part 3: Standard Sandboxed Filesystem Tools (`src/tools/fs.rs`)
+### 5.4 Part 3: Standard Sandboxed Filesystem Tools (`src/tools/fs.rs`)
 
 #### The Idea
 Agents require standard primitives to inspect and modify project workspaces. File operations must be strictly sandboxed within a configured base directory to prevent arbitrary directory traversal (`../`).
@@ -442,7 +618,7 @@ Agents require standard primitives to inspect and modify project workspaces. Fil
 
 ---
 
-### 4.5 Part 4: Conversation Context Pruning & History Retention (`src/core/agent.rs`)
+### 5.5 Part 4: Conversation Context Pruning & History Retention (`src/core/agent.rs`)
 
 #### The Idea
 Long-running conversations or loops with extensive tool payloads can exceed model context limits. The agent must support automated history pruning that enforces a maximum message window while strictly preserving the initial `Role::System` directive.
@@ -467,7 +643,7 @@ Long-running conversations or loops with extensive tool payloads can exceed mode
 
 ---
 
-### 4.6 Part 5: CLI REPL Observability & Diagnostic Commands (`src/main.rs`)
+### 5.6 Part 5: CLI REPL Observability & Diagnostic Commands (`src/main.rs`)
 
 #### The Idea
 Surface the new Milestone 2 features directly to human operators in the interactive REPL with live tool execution indicators, token usage tracking, and diagnostic commands.
@@ -487,7 +663,7 @@ Surface the new Milestone 2 features directly to human operators in the interact
 
 ---
 
-### 4.7 Milestone 2 Acceptance Criteria
+### 5.7 Milestone 2 Acceptance Criteria
 
 1. **Zero Bloat Preserved**: Only `serde`, `serde_json`, and `ureq` remain as external runtime dependencies.
 2. **100% Test Suite Pass**: All new modules (`Usage`, `AgentHook`, `fs`, `ContextPolicy`) backed by thorough unit tests.
@@ -496,7 +672,7 @@ Surface the new Milestone 2 features directly to human operators in the interact
 
 ---
 
-## 5. Core Data Types & Message Protocol Deep-Dive
+## 6. Core Data Types & Message Protocol Deep-Dive
 
 Located in `src/core/types.rs`, these types form the universal domain language for conversation turns and tool invocations.
 
@@ -567,7 +743,7 @@ pub struct FunctionDefinition {
 
 ---
 
-## 6. Tool Subsystem
+## 7. Tool Subsystem
 
 The tool subsystem provides a uniform interface for defining, validating, registering, and executing tools.
 
@@ -608,7 +784,7 @@ impl ToolRegistry {
 
 ---
 
-## 7. Provider Subsystem
+## 8. Provider Subsystem
 
 The provider layer decouples the harness from specific LLM endpoints.
 
@@ -643,7 +819,7 @@ Implements the `Provider` trait for standard OpenAI chat completion endpoints (`
 
 ---
 
-## 8. Agent Execution Engine
+## 9. Agent Execution Engine
 
 ### Configuration (`AgentConfig`)
 ```rust
@@ -712,7 +888,7 @@ impl Agent {
 
 ---
 
-## 9. Configuration & Environment Reference
+## 10. Configuration & Environment Reference
 
 | Environment Variable | Description | Default |
 |---|---|---|
@@ -724,7 +900,7 @@ impl Agent {
 
 ---
 
-## 10. Extension & Integration Guide
+## 11. Extension & Integration Guide
 
 ### Creating a Custom Tool
 
@@ -759,7 +935,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 11. Error Handling & Edge Cases
+## 12. Error Handling & Edge Cases
 
 1. **Malformed JSON Arguments**: When an LLM outputs broken JSON in `ToolCall::arguments`, the harness wraps the parse failure into a `ToolError::InvalidArguments` and feeds it back to the model as a `Role::Tool` message.
 2. **Unknown Tool Invocations**: If the LLM invents a non-existent tool name, a `ToolError::ToolNotFound` is returned in context.
@@ -768,7 +944,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 12. Testing & Verification Strategy
+## 13. Testing & Verification Strategy
 
 - **Unit Tests**:
   - Serialization/deserialization tests for `Role`, `Message`, `ToolCall`, `ToolDefinition`.
@@ -780,7 +956,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 13. Future Roadmap
+## 14. Future Roadmap
 
 - **Token & Context Window Pruning**: Sliding window algorithms to discard older conversation turns while retaining system directives.
 - **Asynchronous & Streaming Pipeline**: SSE (Server-Sent Events) streaming for token-by-token output and tool call chunk reassembly.
@@ -789,7 +965,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 14. Living Changelog & Evolution Ledger
+## 15. Living Changelog & Evolution Ledger
 
 > **Mandatory Agent Instruction**: Every autonomous agent or contributor interacting with this codebase must append an entry below whenever implementing a feature, refactoring, fixing a bug, or completing a phase from `PLAN.md`.
 
@@ -1034,17 +1210,36 @@ impl Tool for TimeTool {
 - **Objective**: Author exhaustive specifications for Milestone 2 (Observability, Context Management & Filesystem Capabilities) in `DOCUMENTATION.md`, partition into 5 atomic issues, and prepare issue tickets.
 - **Changes Made**:
   - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md):
-    - Added Section 4: "STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities".
+    - Added Section 5: "STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities".
     - Detailed Part 1: Token Usage Tracking (`Usage` type, OpenAI payload extraction, session metrics on `Agent`).
     - Detailed Part 2: Agent Event Hooks (`AgentHook` trait and lifecycle observer callbacks for tracing/logging/UI).
     - Detailed Part 3: Sandboxed Filesystem Tools (`ReadFileTool`, `WriteFileTool` with root-jail traversal protections).
     - Detailed Part 4: Context Retention & Pruning (`ContextPolicy` sliding window preserving initial `Role::System` directive).
     - Detailed Part 5: CLI REPL Observability & Diagnostics (Terminal hook output, `/stats`, `/tokens`, `/help`, and filesystem tools integration).
   - Synchronized [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) with Milestone 2 roadmap.
+  - Opened 5 atomic GitHub issues for Milestone 2 tagged `MS2` and `agent-ready` (#6, #7, #8, #9, #10).
 - **Architectural Decisions**:
   - Maintained zero runtime dependency bloat (pure standard library + `serde` + `serde_json` + `ureq`).
   - Separated concerns cleanly: observability decoupled via Observer pattern (`AgentHook`), token accounting separated into `Usage`, and security bounds enforced in `fs` tools.
 - **Verification**:
   - Verified Markdown layout, table of contents links, and schema definitions.
+  - Successfully created issues #6, #7, #8, #9, #10 via GitHub MCP tools.
 - **Next Steps**:
-  - Open 5 atomic GitHub issues for Milestone 2 tagged `MS2` and `agent-ready`.
+  - Author Quickstart & Usage guide at top of documentation and begin Milestone 2 implementation.
+
+---
+
+### [2026-09-25] - Documentation: Comprehensive Quickstart & Usage Guide
+- **Objective**: Author a prominent, exhaustive Quickstart & Usage guide at the top of `DOCUMENTATION.md` detailing build steps, CLI REPL launch configurations (Cloud & Local LLMs), environment variable options, REPL commands, and programmatic library usage examples.
+- **Changes Made**:
+  - Added Section 1: "Quickstart & Usage Guide" to [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md):
+    - **1.1 Prerequisites & Compilation**: Build steps (`cargo build`, `cargo test`, `cargo clippy`, `cargo fmt`).
+    - **1.2 Launching the Interactive CLI REPL**: Cloud OpenAI setup and local open-source LLM setups (Ollama, vLLM, Groq, DeepSeek, Mistral).
+    - **1.3 Environment Variables Reference**: Complete reference table with descriptions and default fallbacks.
+    - **1.4 REPL Commands & Example Workflows**: Interactive command reference (`history`, `clear`/`reset`, `exit`/`quit`) and realistic conversational transcript.
+    - **1.5 Using HarnessMe as a Library (Rust API)**: Complete standalone Rust snippet showing custom tool definition, registration, provider initialization, and agent loop execution.
+  - Updated Table of Contents and renumbered all sections across the entire document (1 through 15).
+- **Verification**:
+  - Verified all Markdown links, table formatting, code block syntax, and headers.
+- **Next Steps**:
+  - Proceed with implementing Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
