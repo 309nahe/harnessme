@@ -116,6 +116,12 @@ Defines the message envelope and tool structures (`Role`, `Message`, `ToolCall`,
 | **Phase 3** | Provider abstraction & OpenAI-compatible client | Completed | [PLAN.md:L91-96](file:///home/nana/dev/harness/PLAN.md#L91-L96) |
 | **Phase 4** | The Agent execution loop & guardrails | Completed | [PLAN.md:L97-107](file:///home/nana/dev/harness/PLAN.md#L97-L107) |
 | **Phase 5** | CLI demo, environment parsing & interactive REPL | Completed | [PLAN.md:L108-114](file:///home/nana/dev/harness/PLAN.md#L108-L114) |
+| **Phase 11** | Google Antigravity (AGY) provider integration | Completed | [PLAN.md:L149-156](file:///home/nana/dev/harness/PLAN.md#L149-L156) |
+| **Phase 12** | Dynamic runtime provider mutation & `/agy` command suite | Completed | [PLAN.md:L157-163](file:///home/nana/dev/harness/PLAN.md#L157-L163) |
+| **Phase 13** | Google account linking & interactive model menu | Completed | [PLAN.md:L164-171](file:///home/nana/dev/harness/PLAN.md#L164-L171) |
+| **Phase 14** | Exclusive Google AI CLI provider & browser sign-in | Completed | [PLAN.md:L172-179](file:///home/nana/dev/harness/PLAN.md#L172-L179) |
+| **Phase 15** | Native Google AI Pro subscription execution via `agy` | Completed | [PLAN.md:L180-188](file:///home/nana/dev/harness/PLAN.md#L180-L188) |
+| **Phase 16** | Dynamic model swapping across subscription models | Completed | [PLAN.md:L189-195](file:///home/nana/dev/harness/PLAN.md#L189-L195) |
 
 
 
