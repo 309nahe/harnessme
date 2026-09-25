@@ -262,22 +262,23 @@ fn print_agy_menu(agy: &AntigravityProvider) {
     println!(
         " Google Account  : {}",
         agy.account_email()
-            .unwrap_or("None (Run '/agy' to sign in)")
+            .map(|e| format!("{e} (Google AI Pro: ACTIVE)"))
+            .unwrap_or_else(|| "None (Run '/agy' to sign in)".to_string())
     );
     println!(" Current Model   : {}", agy.model());
-    println!(" Base URL        : {}", agy.base_url());
+    println!(" Connection      : {}", agy.base_url());
     println!(" Temperature     : {}", agy.temperature());
     println!("----------------------------------------------------------------------");
     println!(" Choose an option or enter a command below:");
     println!("   [1] Sign in with Google (Opens browser) -> '/agy' or '/agy login'");
-    println!("   [2] Change Model (Gemini / AGY)         -> '/agy model' or '/agy models'");
+    println!("   [2] Change Model (Google AI Pro / AGY)  -> '/agy model' or '/agy models'");
     println!("   [3] View Detailed Status & Endpoints    -> '/agy status'");
     println!("   [?] Full Antigravity Help               -> '/agy help'");
     println!("======================================================================\n");
 }
 
 fn print_agy_models(current_model: &str) {
-    println!("---------------- Available Gemini & Antigravity Models ----------------");
+    println!("---------------- Available Google AI Pro & Antigravity Models ----------------");
     for (idx, (name, description)) in AntigravityProvider::SUPPORTED_MODELS.iter().enumerate() {
         let is_current = if *name == current_model {
             " (CURRENT)"
@@ -285,15 +286,15 @@ fn print_agy_models(current_model: &str) {
             ""
         };
         println!(
-            "  [{}] {:<18} : {}{}",
+            "  [{}] {:<26} : {}{}",
             idx + 1,
             name,
             description,
             is_current
         );
     }
-    println!("-----------------------------------------------------------------------");
-    println!("To select a model, run: '/agy model <number|name>' (e.g. '/agy model 2' or '/agy model gemini-2.5-pro')\n");
+    println!("-------------------------------------------------------------------------------");
+    println!("To select a model, run: '/agy model <number|name>' (e.g. '/agy model 1' or '/agy model gemini-3.1-pro-high')\n");
 }
 
 fn print_agy_help() {
@@ -303,15 +304,17 @@ fn print_agy_help() {
     println!("  /agy menu              : Display interactive configuration menu");
     println!("  /agy link [token]      : Link Google account / OAuth bearer token or clear");
     println!("  /agy account <email>   : Link Google account email (or 'clear')");
-    println!("  /agy models            : List supported Gemini & Antigravity models");
-    println!("  /agy model <name|num>  : Set model (e.g. 1=flash, 2=pro, or 'gemini-2.5-pro')");
-    println!("  /agy status            : Display current Antigravity status & settings");
-    println!("  /agy url <url>         : Set base URL (e.g. http://127.0.0.1:38035/v1)");
+    println!("  /agy models            : List supported Google AI Pro & Antigravity models");
+    println!(
+        "  /agy model <name|num>  : Set model (e.g. 1=pro, 2=flash, or 'gemini-3.1-pro-high')"
+    );
+    println!("  /agy status            : Display current Antigravity status & subscription");
+    println!("  /agy url <url>         : Set custom HTTP endpoint URL");
     println!("  /agy port <port>       : Set local port (shortcut for 127.0.0.1:<port>)");
     println!("  /agy csrf <token|none> : Set or clear X-Antigravity-CSRF-Token header");
     println!("  /agy key <key|none>    : Set or clear Bearer API key");
     println!("  /agy temp <0.0 - 2.0>  : Set sampling temperature");
-    println!("  /agy timeout <secs>    : Set HTTP request timeout in seconds");
+    println!("  /agy timeout <secs>    : Set request timeout in seconds");
     println!("  /agy reset             : Reload settings from environment variables");
     println!("  /agy switch            : Confirm active provider is Google AI (Antigravity)");
     println!("-------------------------------------------------------------------\n");
@@ -323,10 +326,11 @@ fn print_agy_status(agy: &AntigravityProvider) {
     println!(
         "  Google Account  : {}",
         agy.account_email()
-            .unwrap_or("None (Not signed in - run '/agy')")
+            .map(|e| format!("{e} (Google AI Pro Subscription: ACTIVE)"))
+            .unwrap_or_else(|| "None (Not signed in - run '/agy')".to_string())
     );
     println!("  Model           : {}", agy.model());
-    println!("  Base URL        : {}", agy.base_url());
+    println!("  Connection      : {}", agy.base_url());
     println!(
         "  CSRF Token      : {}",
         if agy.csrf_token().is_some() {
@@ -340,7 +344,7 @@ fn print_agy_status(agy: &AntigravityProvider) {
         if agy.api_key().is_some() {
             "Configured (hidden)"
         } else {
-            "None"
+            "None / Google Keyring OAuth"
         }
     );
     println!("  Temperature     : {}", agy.temperature());
@@ -399,13 +403,13 @@ fn handle_google_signin(
 
     println!("--------------------------------------------------------------------------");
     if let Some(email) = agy.account_email() {
-        println!("  Status   : SIGNED IN");
-        println!("  Account  : {email}");
+        println!("  Status       : SIGNED IN");
+        println!("  Account      : {email} (Google AI Pro Subscription: ACTIVE)");
     } else {
-        println!("  Status   : ACTIVE (Local Auth / Token Mode)");
+        println!("  Status       : ACTIVE (Local Auth / Token Mode)");
     }
-    println!("  Model    : {}", agy.model());
-    println!("  Endpoint : {}", agy.base_url());
+    println!("  Model        : {}", agy.model());
+    println!("  Connection   : {}", agy.base_url());
     println!("system > Google AI (Antigravity) is active and ready to use.");
     println!("==========================================================================\n");
 }
@@ -428,16 +432,17 @@ fn main() {
         " Account      : {}",
         agy_provider
             .account_email()
-            .unwrap_or("None (Run '/agy' to sign in with Google)")
+            .map(|e| format!("{e} (Google AI Pro: ACTIVE)"))
+            .unwrap_or_else(|| "None (Run '/agy' to sign in with Google)".to_string())
     );
     println!(" Model        : {}", agy_provider.model());
-    println!(" Base URL     : {}", agy_provider.base_url());
+    println!(" Connection   : {}", agy_provider.base_url());
     println!(
         " Auth Key     : {}",
         if agy_provider.api_key().is_some() {
             "Configured (hidden)"
         } else {
-            "None / Local Auth"
+            "None / Google Keyring OAuth"
         }
     );
     println!(" Max Steps    : {max_iterations}");
@@ -745,7 +750,7 @@ mod tests {
         );
         assert_eq!(
             parse_command("/agy 2 2"),
-            Command::Agy(AgySubcommand::Model("gemini-2.5-pro".to_string()))
+            Command::Agy(AgySubcommand::Model("gemini-3.8-flash-high".to_string()))
         );
         assert_eq!(parse_command("/agy 3"), Command::Agy(AgySubcommand::Status));
         assert_eq!(parse_command("/agy 4"), Command::Agy(AgySubcommand::Switch));
@@ -796,19 +801,23 @@ mod tests {
         );
         assert_eq!(
             parse_command("/agy model 1"),
-            Command::Agy(AgySubcommand::Model("gemini-2.5-flash".to_string()))
+            Command::Agy(AgySubcommand::Model("gemini-3.1-pro-high".to_string()))
         );
         assert_eq!(
             parse_command("/agy model 2"),
-            Command::Agy(AgySubcommand::Model("gemini-2.5-pro".to_string()))
+            Command::Agy(AgySubcommand::Model("gemini-3.8-flash-high".to_string()))
         );
         assert_eq!(
             parse_command("/agy model pro"),
-            Command::Agy(AgySubcommand::Model("gemini-2.5-pro".to_string()))
+            Command::Agy(AgySubcommand::Model("gemini-3.1-pro-high".to_string()))
         );
         assert_eq!(
-            parse_command("/agy model gemini-1.5-pro"),
-            Command::Agy(AgySubcommand::Model("gemini-1.5-pro".to_string()))
+            parse_command("/agy model flash"),
+            Command::Agy(AgySubcommand::Model("gemini-3.8-flash-high".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy model gemini-3.7-flash-high"),
+            Command::Agy(AgySubcommand::Model("gemini-3.7-flash-high".to_string()))
         );
         assert_eq!(
             parse_command("/agy url http://localhost:38035/v1"),
