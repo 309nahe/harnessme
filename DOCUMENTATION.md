@@ -8,15 +8,24 @@ A lightweight, robust, and extensible Agentic AI Harness in Rust with minimal de
 
 1. [Introduction & Architectural Goals](#1-introduction--architectural-goals)
 2. [High-Level Architecture](#2-high-level-architecture)
-3. [Core Data Types & Message Protocol](#3-core-data-types--message-protocol)
-4. [Tool Subsystem](#4-tool-subsystem)
-5. [Provider Subsystem](#5-provider-subsystem)
-6. [Agent Execution Engine](#6-agent-execution-engine)
-7. [Configuration & Environment Reference](#7-configuration--environment-reference)
-8. [Extension & Integration Guide](#8-extension--integration-guide)
-9. [Error Handling & Edge Cases](#9-error-handling--edge-cases)
-10. [Testing & Verification Strategy](#10-testing--verification-strategy)
-11. [Future Roadmap](#11-future-roadmap)
+3. [STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")](#3-step-1-milestone-1--minimal-working-agent-harness-make-it-work-first)
+   - [3.1 Philosophy: Make It Work, Make It Perfect Later](#31-philosophy-make-it-work-make-it-perfect-later)
+   - [3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)](#32-part-1-manifest--minimal-dependencies-cargotoml)
+   - [3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)](#33-part-2-core-domain-models--message-ir-srccoretypesrs)
+   - [3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)](#34-part-3-tool-abstraction--registry-srccoretoolrs)
+   - [3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)](#35-part-4-provider-abstraction--http-client-srccoreproviderrs)
+   - [3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)](#36-part-5-agent-execution-loop--safety-limits-srccoreagentrs)
+   - [3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)](#37-part-6-cli-interactive-demo--repl-srcmainrs)
+   - [3.8 Milestone 1 Acceptance Criteria](#38-milestone-1-acceptance-criteria)
+4. [Core Data Types & Message Protocol](#4-core-data-types--message-protocol)
+5. [Tool Subsystem](#5-tool-subsystem)
+6. [Provider Subsystem](#6-provider-subsystem)
+7. [Agent Execution Engine](#7-agent-execution-engine)
+8. [Configuration & Environment Reference](#8-configuration--environment-reference)
+9. [Extension & Integration Guide](#9-extension--integration-guide)
+10. [Error Handling & Edge Cases](#10-error-handling--edge-cases)
+11. [Testing & Verification Strategy](#11-testing--verification-strategy)
+12. [Future Roadmap](#12-future-roadmap)
 
 ---
 
@@ -59,13 +68,14 @@ The harness is centered around the **Agent Loop**, connecting the Conversation S
 
 ```
 src/
+├── lib.rs             # Library root exposing core and tools modules
 ├── core/
 │   ├── mod.rs
 │   ├── types.rs       # Role, Message, ToolCall, ToolResult, ToolDefinition
 │   ├── tool.rs        # Tool trait, ToolRegistry, ToolError
 │   ├── provider.rs    # Provider trait, ProviderResponse, OpenAI-compatible client
 │   └── agent.rs       # AgentConfig, Agent struct, execution loop & lifecycle hooks
-├── tools/             # Built-in reference tools (e.g. calculator, echo, clock)
+├── tools/             # Built-in reference tools (e.g. calculator, echo)
 │   ├── mod.rs
 │   ├── calculator.rs
 │   └── echo.rs
@@ -74,7 +84,273 @@ src/
 
 ---
 
-## 3. Core Data Types & Message Protocol
+## 3. STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")
+
+### 3.1 Philosophy: Make It Work, Make It Perfect Later
+
+The sole objective of Milestone 1 is to build a functional, reliable end-to-end agent harness without premature optimization or unnecessary complexity. 
+
+- **No Killer Features**: Skip streaming tokens, complex vector stores, multi-agent swarms, or sandbox runtimes.
+- **Sequential Simplicity**: The interaction between an LLM and tools is naturally sequential (Think $\rightarrow$ Tool Call $\rightarrow$ Tool Result $\rightarrow$ Think). We use synchronous blocking I/O (`ureq`) to avoid runtime executors and pinning complexities.
+- **Self-Correcting Robustness**: When a tool fails or the model passes invalid JSON arguments, capture the error and feed it back into the conversation context as a `Role::Tool` message so the LLM can recover gracefully.
+
+---
+
+### 3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)
+
+#### The Idea
+Milestone 1 must compile in under 5 seconds with zero dependency bloat. We avoid large async runtimes (Tokio/Actix) and heavy utility crates. The harness relies exclusively on the Rust standard library plus two essential crates: one for JSON serialization and one for HTTP requests.
+
+#### Technological Specifications
+
+```toml
+[package]
+name = "harnessme"
+version = "0.1.0"
+edition = "2021"
+authors = ["309nahe"]
+description = "A lightweight, minimal agentic AI harness in Rust"
+
+[dependencies]
+# Serialization and JSON schema parsing
+serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
+
+# Minimal synchronous HTTP client (no tokio dependency required)
+ureq = { version = "2.10", features = ["json"] }
+```
+
+---
+
+### 3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)
+
+#### The Idea
+We need a unified intermediate representation (IR) that models all conversational turns. We match the OpenAI function-calling standard because it is the de-facto protocol implemented by OpenAI, Ollama, vLLM, Groq, Mistral, and LocalAI.
+
+#### Technological Specifications
+
+1. **`Role`**:
+   - Enumeration with values: `System`, `User`, `Assistant`, `Tool`.
+   - Serialized as lowercase strings (`"system"`, `"user"`, `"assistant"`, `"tool"`).
+   
+2. **`Message`**:
+   - `role: Role`: Sender of the message.
+   - `content: Option<String>`: Optional text payload (omitted or null when generating tool calls only).
+   - `tool_calls: Option<Vec<ToolCall>>`: Populated when the assistant requests one or more tool executions.
+   - `tool_call_id: Option<String>`: Populated only on `Role::Tool` messages to link the result back to the corresponding call.
+   - Serde annotations: `#[serde(skip_serializing_if = "Option::is_none")]` to produce clean JSON payloads.
+
+3. **`ToolCall` & `FunctionCall`**:
+   - `ToolCall`: `id: String`, `r#type: String` (defaults to `"function"`), `function: FunctionCall`.
+   - `FunctionCall`: `name: String`, `arguments: String` (raw unparsed JSON string emitted by LLM).
+
+4. **`ToolDefinition` & `FunctionDefinition`**:
+   - Describes available tools to the LLM.
+   - `ToolDefinition`: `r#type: String = "function"`, `function: FunctionDefinition`.
+   - `FunctionDefinition`: `name: String`, `description: String`, `parameters: serde_json::Value` (standard JSON Schema object).
+
+5. **`ToolResult`**:
+   - Internal helper representing the outcome of a tool run: `tool_call_id: String`, `content: String`, `is_error: bool`.
+
+---
+
+### 3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)
+
+#### The Idea
+The agent engine must not be tightly coupled to any specific tool. Any capability (calculator, file reader, web fetcher) must implement a common trait. A registry manages registration, provides schema definitions to the provider, and handles dynamic dispatch.
+
+#### Technological Specifications
+
+1. **`ToolError` Enum**:
+   ```rust
+   #[derive(Debug)]
+   pub enum ToolError {
+       InvalidArguments(String),
+       ExecutionFailed(String),
+       ToolNotFound(String),
+   }
+   ```
+
+2. **`Tool` Trait**:
+   - `fn name(&self) -> &str`: Unique name matching LLM tool call.
+   - `fn description(&self) -> &str`: Concise natural language explanation of functionality.
+   - `fn parameters_schema(&self) -> serde_json::Value`: Valid JSON Schema specifying required and optional arguments.
+   - `fn execute(&self, args: serde_json::Value) -> Result<String, ToolError>`: Executes the business logic and returns a text output.
+
+3. **`ToolRegistry`**:
+   - Internal storage: `HashMap<String, Box<dyn Tool>>`.
+   - `pub fn new() -> Self`: Initializes an empty registry.
+   - `pub fn register<T: Tool + 'static>(&mut self, tool: T)`: Inserts a tool into the map.
+   - `pub fn definitions(&self) -> Vec<ToolDefinition>`: Converts registered tools into standard schemas for LLM prompts.
+   - `pub fn execute(&self, name: &str, raw_args: &str) -> Result<String, ToolError>`:
+     - Checks if `name` exists in map.
+     - Parses `raw_args` using `serde_json::from_str`.
+     - Calls `tool.execute(args)`.
+
+4. **Reference Tools (`src/tools/`)**:
+   - `EchoTool`: Accepts `{"message": "string"}` and returns the message.
+   - `CalculatorTool`: Accepts `{"expression": "string"}` or `{"a": number, "b": number, "op": "add|sub|mul|div"}` and returns computed results.
+
+---
+
+### 3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)
+
+#### The Idea
+Decouple the agent loop from the LLM network layer. The provider accepts the current history of messages and available tool definitions, makes an HTTP POST request to `/v1/chat/completions`, and returns either final text or requested tool calls.
+
+#### Technological Specifications
+
+1. **`ProviderError` Enum**:
+   ```rust
+   #[derive(Debug)]
+   pub enum ProviderError {
+       HttpError(String),
+       SerializationError(String),
+       ApiError { status: u16, message: String },
+       EmptyResponse,
+   }
+   ```
+
+2. **`ProviderResponse` Enum**:
+   ```rust
+   #[derive(Debug, Clone)]
+   pub enum ProviderResponse {
+       Text(String),
+       ToolCalls(Vec<ToolCall>),
+   }
+   ```
+
+3. **`Provider` Trait**:
+   ```rust
+   pub trait Provider: Send + Sync {
+       fn complete(
+           &self,
+           messages: &[Message],
+           tools: &[ToolDefinition],
+       ) -> Result<ProviderResponse, ProviderError>;
+   }
+   ```
+
+4. **`OpenAiCompatibleProvider`**:
+   - Fields:
+     - `api_key: Option<String>`
+     - `base_url: String` (e.g., `https://api.openai.com/v1` or `http://localhost:11434/v1`)
+     - `model: String` (e.g., `gpt-4o-mini` or `llama3.1`)
+     - `temperature: f32`
+   - Request Construction:
+     - Endpoint: `{base_url}/chat/completions`
+     - Headers: `Content-Type: application/json`, `Authorization: Bearer {api_key}` (if set).
+     - Body Payload:
+       ```json
+       {
+         "model": "gpt-4o-mini",
+         "messages": [...],
+         "tools": [...],
+         "temperature": 0.7
+       }
+       ```
+     - Note: If `tools` is empty, omit the `"tools"` field to support non-tool-calling models.
+   - Response Handling:
+     - Uses `ureq::post(...).send_json(...)`.
+     - Inspects `choices[0].message`.
+     - If `tool_calls` is present and non-empty $\rightarrow$ return `ProviderResponse::ToolCalls(calls)`.
+     - Otherwise $\rightarrow$ return `ProviderResponse::Text(content)`.
+
+---
+
+### 3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)
+
+#### The Idea
+The agent manages conversational memory and drives the recursive loop: send messages to provider $\rightarrow$ check response $\rightarrow$ execute tools $\rightarrow$ record outputs $\rightarrow$ repeat until the model answers in text or hits the iteration guardrail.
+
+#### Technological Specifications
+
+1. **`AgentConfig`**:
+   ```rust
+   #[derive(Debug, Clone)]
+   pub struct AgentConfig {
+       pub system_prompt: Option<String>,
+       pub max_iterations: usize, // Default: 10
+   }
+   ```
+
+2. **`Agent` Struct**:
+   ```rust
+   pub struct Agent {
+       config: AgentConfig,
+       provider: Box<dyn Provider>,
+       registry: ToolRegistry,
+       history: Vec<Message>,
+   }
+   ```
+
+3. **Execution Loop Algorithm (`Agent::run(&mut self, user_prompt: &str) -> Result<String, AgentError>`)**:
+   1. If `history` is empty and `system_prompt` is configured, prepend `Message { role: Role::System, content: system_prompt, .. }`.
+   2. Append `Message { role: Role::User, content: Some(user_prompt.to_string()), .. }` to `history`.
+   3. Initialize `iteration = 0`.
+   4. **Loop**:
+      - Check `if iteration >= config.max_iterations` $\rightarrow$ Return `Err(AgentError::MaxIterationsExceeded)`.
+      - Increment `iteration += 1`.
+      - Call `provider.complete(&self.history, &self.registry.definitions())`.
+      - Match `ProviderResponse`:
+        - **Case A: `ProviderResponse::Text(text)`**:
+          - Append `Message { role: Role::Assistant, content: Some(text.clone()), .. }` to `history`.
+          - Return `Ok(text)`.
+        - **Case B: `ProviderResponse::ToolCalls(calls)`**:
+          - Append `Message { role: Role::Assistant, content: None, tool_calls: Some(calls.clone()), .. }` to `history`.
+          - For each `call` in `calls`:
+            - Execute tool via `registry.execute(&call.function.name, &call.function.arguments)`.
+            - If execution fails (e.g. invalid arguments or runtime error), format error string: `"Error: {err}"`.
+            - Append tool response message:
+              ```rust
+              Message {
+                  role: Role::Tool,
+                  content: Some(result_text),
+                  tool_calls: None,
+                  tool_call_id: Some(call.id.clone()),
+              }
+              ```
+          - Continue loop to next iteration.
+
+---
+
+### 3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)
+
+#### The Idea
+Provide an immediate, human-usable terminal binary to interact with the agent, test tool calls in real time, and verify model behavior.
+
+#### Technological Specifications
+
+- Reads environment variables:
+  - `OPENAI_API_KEY`: API key.
+  - `OPENAI_BASE_URL`: Base URL (default: `https://api.openai.com/v1`).
+  - `HARNESS_MODEL`: Model name (default: `gpt-4o-mini`).
+- Registers default sample tools (`CalculatorTool`, `EchoTool`).
+- Enters interactive stdin loop:
+  - Prints prompt symbol `user > `.
+  - Reads line from `std::io::stdin()`.
+  - Exits on `exit`, `quit`, or EOF.
+  - Calls `agent.run(&input)`.
+  - Prints `agent > {response}`.
+
+---
+
+### 3.8 Milestone 1 Acceptance Criteria
+
+Before declaring Milestone 1 complete, the following criteria must be satisfied:
+
+1. **Clean Compilation**: `cargo check` and `cargo test` pass with 0 warnings and 0 errors.
+2. **Zero Bloat Verified**: No asynchronous runtimes or heavy dependencies beyond `serde`, `serde_json`, and `ureq`.
+3. **Unit Test Coverage**:
+   - `core::types`: Serialization/deserialization of Messages, ToolCalls, and Schemas.
+   - `core::tool`: Registration and argument parsing of reference tools.
+4. **Mock Provider Test**:
+   - A mock provider that returns a tool call on step 1 and a final text answer on step 2 passes through `Agent::run` deterministically.
+5. **Interactive REPL Functional**: Running `cargo run` allows conversational interaction and correctly triggers tool calls when asked (e.g., "calculate 45 * 12").
+
+---
+
+## 4. Core Data Types & Message Protocol Deep-Dive
 
 Located in `src/core/types.rs`, these types form the universal domain language for conversation turns and tool invocations.
 
@@ -145,7 +421,7 @@ pub struct FunctionDefinition {
 
 ---
 
-## 4. Tool Subsystem
+## 5. Tool Subsystem
 
 The tool subsystem provides a uniform interface for defining, validating, registering, and executing tools.
 
@@ -186,7 +462,7 @@ impl ToolRegistry {
 
 ---
 
-## 5. Provider Subsystem
+## 6. Provider Subsystem
 
 The provider layer decouples the harness from specific LLM endpoints.
 
@@ -221,7 +497,7 @@ Implements the `Provider` trait for standard OpenAI chat completion endpoints (`
 
 ---
 
-## 6. Agent Execution Engine
+## 7. Agent Execution Engine
 
 ### Configuration (`AgentConfig`)
 ```rust
@@ -253,7 +529,7 @@ pub struct AgentConfig {
 
 ---
 
-## 7. Configuration & Environment Reference
+## 8. Configuration & Environment Reference
 
 | Environment Variable | Description | Default |
 |---|---|---|
@@ -265,7 +541,7 @@ pub struct AgentConfig {
 
 ---
 
-## 8. Extension & Integration Guide
+## 9. Extension & Integration Guide
 
 ### Creating a Custom Tool
 
@@ -300,7 +576,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 9. Error Handling & Edge Cases
+## 10. Error Handling & Edge Cases
 
 1. **Malformed JSON Arguments**: When an LLM outputs broken JSON in `ToolCall::arguments`, the harness wraps the parse failure into a `ToolError::InvalidArguments` and feeds it back to the model as a `Role::Tool` message.
 2. **Unknown Tool Invocations**: If the LLM invents a non-existent tool name, a `ToolError::ToolNotFound` is returned in context.
@@ -309,7 +585,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 10. Testing & Verification Strategy
+## 11. Testing & Verification Strategy
 
 - **Unit Tests**:
   - Serialization/deserialization tests for `Role`, `Message`, `ToolCall`, `ToolDefinition`.
@@ -321,7 +597,7 @@ impl Tool for TimeTool {
 
 ---
 
-## 11. Future Roadmap
+## 12. Future Roadmap
 
 - **Token & Context Window Pruning**: Sliding window algorithms to discard older conversation turns while retaining system directives.
 - **Asynchronous & Streaming Pipeline**: SSE (Server-Sent Events) streaming for token-by-token output and tool call chunk reassembly.
