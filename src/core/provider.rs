@@ -6,7 +6,7 @@ use std::time::Duration;
 
 use serde::{Deserialize, Serialize};
 
-use crate::core::types::{Message, ToolCall, ToolDefinition};
+use crate::core::types::{Message, Role, ToolCall, ToolDefinition};
 
 /// Strongly typed errors that can occur during LLM provider communication.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -264,41 +264,49 @@ pub struct AntigravityProvider {
 }
 
 impl AntigravityProvider {
-    /// Default model preset for Antigravity provider.
-    pub const DEFAULT_MODEL: &'static str = "gemini-2.5-flash";
-    /// Default fallback base URL for local Antigravity Language Server.
-    pub const DEFAULT_BASE_URL: &'static str = "http://127.0.0.1:38035/v1";
+    /// Default model preset for Antigravity provider (Google AI Pro Flagship).
+    pub const DEFAULT_MODEL: &'static str = "gemini-3.1-pro-high";
+    /// Default connection label for native Google AI Pro subscription via agy.
+    pub const DEFAULT_BASE_URL: &'static str = "Google Cloud (Antigravity Native)";
 
     /// Curated Google Gemini & Antigravity model catalogue with descriptions.
     pub const SUPPORTED_MODELS: &'static [(&'static str, &'static str)] = &[
         (
-            "gemini-2.5-flash",
-            "Gemini 2.5 Flash (Ultra-fast, multimodal reasoning & tool calling)",
+            "gemini-3.1-pro-high",
+            "Gemini 3.1 Pro (High) - Google AI Pro Flagship (Deep reasoning & code)",
         ),
         (
-            "gemini-2.5-pro",
-            "Gemini 2.5 Pro (Advanced reasoning & deep code generation)",
+            "gemini-3.8-flash-high",
+            "Gemini 3.8 Flash (High) - Fast, capable multimodal model",
         ),
         (
-            "gemini-1.5-pro",
-            "Gemini 1.5 Pro (Long 2M+ context window & complex analysis)",
+            "gemini-3.7-flash-high",
+            "Gemini 3.7 Flash (High) - Extended reasoning & low latency",
         ),
         (
-            "gemini-1.5-flash",
-            "Gemini 1.5 Flash (Lightweight, ultra-low latency)",
+            "gemini-3.6-flash-high",
+            "Gemini 3.6 Flash (High) - Ultra-low latency conversational model",
         ),
-        ("agy-pro", "Antigravity Pro Enterprise Model"),
+        (
+            "claude-sonnet-4-6",
+            "Claude Sonnet 4.6 (Thinking - Google AI Pro Gateway)",
+        ),
+        (
+            "claude-opus-4-6-thinking",
+            "Claude Opus 4.6 (Thinking - Google AI Pro Gateway)",
+        ),
     ];
 
     /// Resolves a numeric shortcut index or alias into a canonical model name if matched.
     pub fn resolve_model_name(input: &str) -> String {
         let trimmed = input.trim();
         match trimmed {
-            "1" | "flash" => "gemini-2.5-flash".to_string(),
-            "2" | "pro" => "gemini-2.5-pro".to_string(),
-            "3" => "gemini-1.5-pro".to_string(),
-            "4" => "gemini-1.5-flash".to_string(),
-            "5" => "agy-pro".to_string(),
+            "1" | "pro" => "gemini-3.1-pro-high".to_string(),
+            "2" | "flash" => "gemini-3.8-flash-high".to_string(),
+            "3" => "gemini-3.7-flash-high".to_string(),
+            "4" => "gemini-3.6-flash-high".to_string(),
+            "5" | "sonnet" => "claude-sonnet-4-6".to_string(),
+            "6" | "opus" => "claude-opus-4-6-thinking".to_string(),
             other => other.to_string(),
         }
     }
@@ -376,15 +384,6 @@ impl AntigravityProvider {
 
         let base_url = std::env::var("ANTIGRAVITY_BASE_URL")
             .or_else(|_| std::env::var("AGY_BASE_URL"))
-            .or_else(|_| {
-                std::env::var("ANTIGRAVITY_LS_ADDRESS").map(|addr| {
-                    if addr.starts_with("http://") || addr.starts_with("https://") {
-                        format!("{}/v1", addr.trim_end_matches('/'))
-                    } else {
-                        format!("http://{}/v1", addr.trim_end_matches('/'))
-                    }
-                })
-            })
             .unwrap_or_else(|_| Self::DEFAULT_BASE_URL.to_string());
 
         let csrf_token = std::env::var("ANTIGRAVITY_CSRF_TOKEN").ok();
@@ -516,10 +515,204 @@ impl AntigravityProvider {
     pub fn source_metadata(&self) -> Option<&str> {
         self.source_metadata.as_deref()
     }
-}
 
-impl Provider for AntigravityProvider {
-    fn complete(
+    /// Attempts to locate the `agy` CLI binary on the system.
+    pub fn find_agy_binary() -> Option<std::path::PathBuf> {
+        if let Ok(path) = std::env::var("AGY_BIN") {
+            let p = std::path::PathBuf::from(path);
+            if p.is_file() {
+                return Some(p);
+            }
+        }
+        if let Ok(home) = std::env::var("HOME").or_else(|_| std::env::var("USERPROFILE")) {
+            let local_bin = std::path::Path::new(&home)
+                .join(".local")
+                .join("bin")
+                .join("agy");
+            if local_bin.is_file() {
+                return Some(local_bin);
+            }
+        }
+        if let Ok(output) = std::process::Command::new("which").arg("agy").output() {
+            if output.status.success() {
+                let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+                if !stdout.is_empty() {
+                    let p = std::path::PathBuf::from(stdout);
+                    if p.is_file() {
+                        return Some(p);
+                    }
+                }
+            }
+        }
+        None
+    }
+
+    /// Formats the conversation history and available tools into a prompt for `agy`.
+    pub fn build_prompt_with_tools(messages: &[Message], tools: &[ToolDefinition]) -> String {
+        let mut prompt = String::new();
+
+        if !tools.is_empty() {
+            prompt.push_str("You have access to the following tools:\n");
+            if let Ok(tools_json) = serde_json::to_string_pretty(tools) {
+                prompt.push_str(&tools_json);
+                prompt.push('\n');
+            }
+            prompt.push_str("\nInstructions for tool calling:\n");
+            prompt.push_str("If you need to call one or more tools to answer the user request, respond ONLY with a JSON object in this exact format:\n");
+            prompt.push_str("{\n  \"tool_calls\": [\n    {\n      \"id\": \"call_1\",\n      \"type\": \"function\",\n      \"function\": {\n        \"name\": \"<tool_name>\",\n        \"arguments\": \"{\\\"arg_name\\\": \\\"value\\\"}\"\n      }\n    }\n  ]\n}\n");
+            prompt.push_str("Do NOT include markdown formatting or extra commentary around the JSON when calling tools.\n");
+            prompt.push_str("If no tool call is needed, provide your normal conversational answer directly.\n\n");
+        }
+
+        prompt.push_str("Conversation History:\n");
+        for msg in messages {
+            match msg.role {
+                Role::System => {
+                    prompt.push_str("System: ");
+                    prompt.push_str(msg.content.as_deref().unwrap_or(""));
+                    prompt.push('\n');
+                }
+                Role::User => {
+                    prompt.push_str("User: ");
+                    prompt.push_str(msg.content.as_deref().unwrap_or(""));
+                    prompt.push('\n');
+                }
+                Role::Assistant => {
+                    prompt.push_str("Assistant: ");
+                    if let Some(tool_calls) = &msg.tool_calls {
+                        let calls_json = serde_json::json!({ "tool_calls": tool_calls });
+                        prompt.push_str(&calls_json.to_string());
+                    } else if let Some(content) = &msg.content {
+                        prompt.push_str(content);
+                    }
+                    prompt.push('\n');
+                }
+                Role::Tool => {
+                    let id = msg.tool_call_id.as_deref().unwrap_or("call");
+                    let content = msg.content.as_deref().unwrap_or("");
+                    prompt.push_str(&format!("Tool [{id}]: {content}\n"));
+                }
+            }
+        }
+        prompt.push_str("Assistant: ");
+        prompt
+    }
+
+    /// Extracts tool calls from model output if the response contains a tool call payload.
+    pub fn extract_tool_calls_from_text(text: &str) -> Option<Vec<ToolCall>> {
+        let trimmed = text.trim();
+        let cleaned = if let Some(stripped) = trimmed.strip_prefix("```json") {
+            stripped.strip_suffix("```").unwrap_or(stripped).trim()
+        } else if let Some(stripped) = trimmed.strip_prefix("```") {
+            stripped.strip_suffix("```").unwrap_or(stripped).trim()
+        } else {
+            trimmed
+        };
+
+        #[derive(Deserialize)]
+        struct ToolCallsWrapper {
+            tool_calls: Vec<ToolCall>,
+        }
+
+        if let Ok(wrapper) = serde_json::from_str::<ToolCallsWrapper>(cleaned) {
+            if !wrapper.tool_calls.is_empty() {
+                return Some(wrapper.tool_calls);
+            }
+        }
+
+        // Also check if text contains embedded JSON with "tool_calls"
+        if let Some(start) = cleaned.find('{') {
+            if let Some(end) = cleaned.rfind('}') {
+                if start < end {
+                    let slice = &cleaned[start..=end];
+                    if let Ok(wrapper) = serde_json::from_str::<ToolCallsWrapper>(slice) {
+                        if !wrapper.tool_calls.is_empty() {
+                            return Some(wrapper.tool_calls);
+                        }
+                    }
+                }
+            }
+        }
+
+        None
+    }
+
+    /// Sends a prompt to the Google AI Pro subscription via the local `agy` CLI binary.
+    pub fn complete_agy_cli(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ProviderResponse, ProviderError> {
+        let agy_bin = Self::find_agy_binary().ok_or_else(|| {
+            ProviderError::HttpError(
+                "The `agy` CLI binary was not found. Please ensure `agy` is installed to use your Google AI Pro subscription."
+                    .to_string(),
+            )
+        })?;
+
+        let prompt = Self::build_prompt_with_tools(messages, tools);
+
+        let mut cmd = std::process::Command::new(agy_bin);
+        cmd.arg("--model")
+            .arg(&self.model)
+            .arg("--output-format")
+            .arg("json")
+            .arg("--print")
+            .arg(&prompt);
+
+        let output = cmd
+            .output()
+            .map_err(|err| ProviderError::HttpError(format!("Failed to execute agy CLI: {err}")))?;
+
+        if !output.status.success() {
+            let stderr = String::from_utf8_lossy(&output.stderr);
+            return Err(ProviderError::ApiError {
+                status: output.status.code().unwrap_or(1) as u16,
+                message: format!("agy command failed: {stderr}"),
+            });
+        }
+
+        let stdout = String::from_utf8_lossy(&output.stdout);
+
+        #[derive(Deserialize)]
+        #[allow(dead_code)]
+        struct AgyCliResponse {
+            #[serde(default)]
+            status: Option<String>,
+            #[serde(default)]
+            response: Option<String>,
+            #[serde(default)]
+            error: Option<String>,
+        }
+
+        if let Ok(parsed) = serde_json::from_str::<AgyCliResponse>(&stdout) {
+            if let Some(ref err) = parsed.error {
+                return Err(ProviderError::ApiError {
+                    status: 500,
+                    message: err.clone(),
+                });
+            }
+            if let Some(text) = parsed.response {
+                if let Some(tool_calls) = Self::extract_tool_calls_from_text(&text) {
+                    return Ok(ProviderResponse::ToolCalls(tool_calls));
+                }
+                return Ok(ProviderResponse::Text(text.trim().to_string()));
+            }
+        }
+
+        if let Some(tool_calls) = Self::extract_tool_calls_from_text(&stdout) {
+            return Ok(ProviderResponse::ToolCalls(tool_calls));
+        }
+
+        if stdout.trim().is_empty() {
+            Err(ProviderError::EmptyResponse)
+        } else {
+            Ok(ProviderResponse::Text(stdout.trim().to_string()))
+        }
+    }
+
+    /// Sends completion request via HTTP endpoint.
+    pub fn complete_http(
         &self,
         messages: &[Message],
         tools: &[ToolDefinition],
@@ -573,6 +766,25 @@ impl Provider for AntigravityProvider {
         })?;
 
         OpenAiCompatibleProvider::parse_response_json(&response_body)
+    }
+}
+
+impl Provider for AntigravityProvider {
+    fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ProviderResponse, ProviderError> {
+        let is_custom_http = (self.base_url.starts_with("http://")
+            || self.base_url.starts_with("https://"))
+            && !self.base_url.contains("127.0.0.1:38035")
+            && !self.base_url.contains("localhost:38035");
+
+        if is_custom_http {
+            self.complete_http(messages, tools)
+        } else {
+            self.complete_agy_cli(messages, tools)
+        }
     }
 }
 
@@ -878,34 +1090,49 @@ mod tests {
     fn test_antigravity_model_resolution_and_catalogue() {
         assert_eq!(
             AntigravityProvider::resolve_model_name("1"),
-            "gemini-2.5-flash"
-        );
-        assert_eq!(
-            AntigravityProvider::resolve_model_name("flash"),
-            "gemini-2.5-flash"
-        );
-        assert_eq!(
-            AntigravityProvider::resolve_model_name("2"),
-            "gemini-2.5-pro"
+            "gemini-3.1-pro-high"
         );
         assert_eq!(
             AntigravityProvider::resolve_model_name("pro"),
-            "gemini-2.5-pro"
+            "gemini-3.1-pro-high"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("2"),
+            "gemini-3.8-flash-high"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("flash"),
+            "gemini-3.8-flash-high"
         );
         assert_eq!(
             AntigravityProvider::resolve_model_name("3"),
-            "gemini-1.5-pro"
+            "gemini-3.7-flash-high"
         );
         assert_eq!(
             AntigravityProvider::resolve_model_name("4"),
-            "gemini-1.5-flash"
+            "gemini-3.6-flash-high"
         );
-        assert_eq!(AntigravityProvider::resolve_model_name("5"), "agy-pro");
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("5"),
+            "claude-sonnet-4-6"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("sonnet"),
+            "claude-sonnet-4-6"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("6"),
+            "claude-opus-4-6-thinking"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("opus"),
+            "claude-opus-4-6-thinking"
+        );
         assert_eq!(
             AntigravityProvider::resolve_model_name("custom-gemini-preview"),
             "custom-gemini-preview"
         );
-        assert_eq!(AntigravityProvider::SUPPORTED_MODELS.len(), 5);
+        assert_eq!(AntigravityProvider::SUPPORTED_MODELS.len(), 6);
     }
 
     #[test]
@@ -918,5 +1145,79 @@ mod tests {
         let provider = AntigravityProvider::from_env();
         // Provider is successfully constructed with discovered or default settings
         assert!(!provider.model().is_empty());
+    }
+
+    #[test]
+    fn test_build_prompt_with_tools() {
+        let messages = vec![
+            Message::system("You are a helpful assistant."),
+            Message::user("Calculate 10 + 20"),
+            Message::assistant_with_tool_calls(
+                None::<String>,
+                vec![ToolCall {
+                    id: "call_1".to_string(),
+                    r#type: "function".to_string(),
+                    function: crate::core::types::FunctionCall {
+                        name: "calculator".to_string(),
+                        arguments: "{\"expression\": \"10 + 20\"}".to_string(),
+                    },
+                }],
+            ),
+            Message::tool("30", "call_1"),
+        ];
+
+        let tools = vec![ToolDefinition {
+            r#type: "function".to_string(),
+            function: FunctionDefinition {
+                name: "calculator".to_string(),
+                description: "Compute math expression".to_string(),
+                parameters: json!({"type": "object"}),
+            },
+        }];
+
+        let prompt = AntigravityProvider::build_prompt_with_tools(&messages, &tools);
+        assert!(prompt.contains("You have access to the following tools:"));
+        assert!(prompt.contains("calculator"));
+        assert!(prompt.contains("System: You are a helpful assistant."));
+        assert!(prompt.contains("User: Calculate 10 + 20"));
+        assert!(prompt.contains("call_1"));
+        assert!(prompt.contains("Tool [call_1]: 30"));
+        assert!(prompt.ends_with("Assistant: "));
+    }
+
+    #[test]
+    fn test_extract_tool_calls_from_text() {
+        let raw_json = r#"{
+            "tool_calls": [
+                {
+                    "id": "call_123",
+                    "type": "function",
+                    "function": {
+                        "name": "calculator",
+                        "arguments": "{\"expression\": \"42 * 99\"}"
+                    }
+                }
+            ]
+        }"#;
+
+        let calls = AntigravityProvider::extract_tool_calls_from_text(raw_json).unwrap();
+        assert_eq!(calls.len(), 1);
+        assert_eq!(calls[0].id, "call_123");
+        assert_eq!(calls[0].function.name, "calculator");
+
+        // Code block wrapped
+        let fenced_json = format!("```json\n{raw_json}\n```");
+        let calls_fenced = AntigravityProvider::extract_tool_calls_from_text(&fenced_json).unwrap();
+        assert_eq!(calls_fenced.len(), 1);
+
+        // Plain text returns None
+        assert!(AntigravityProvider::extract_tool_calls_from_text("The answer is 42.").is_none());
+    }
+
+    #[test]
+    fn test_find_agy_binary() {
+        // In this environment, agy is installed
+        let bin = AntigravityProvider::find_agy_binary();
+        assert!(bin.is_some());
     }
 }
