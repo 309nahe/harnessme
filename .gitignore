@@ -1,0 +1,29 @@
+# Rust build artifacts
+/target/
+**/*.rs.bk
+*.bk
+
+# Environment variables & secrets
+.env
+.env.*
+!.env.example
+*.key
+*.pem
+credentials.json
+
+# IDE & Editors
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+*.sublime-project
+*.sublime-workspace
+
+# Operating System artifacts
+.DS_Store
+Thumbs.db
+
+# Logs & scratchpads
+*.log
+scratch/
