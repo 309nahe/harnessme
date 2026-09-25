@@ -113,7 +113,7 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
 
 | Phase | Description | Status | Reference |
 |---|---|---|---|
-| **Phase 1** | Project setup & core domain types (`Role`, `Message`, `ToolCall`, `ToolResult`) | Planned / In Progress | [PLAN.md:L80-84](file:///home/nana/dev/harness/PLAN.md#L80-L84) |
+| **Phase 1** | Project setup & core domain types (`Role`, `Message`, `ToolCall`, `ToolResult`) | Completed | [PLAN.md:L80-84](file:///home/nana/dev/harness/PLAN.md#L80-L84) |
 | **Phase 2** | Tool abstraction & in-memory `ToolRegistry` with sample tools | Planned | [PLAN.md:L85-90](file:///home/nana/dev/harness/PLAN.md#L85-L90) |
 | **Phase 3** | Provider abstraction & OpenAI-compatible client | Planned | [PLAN.md:L91-96](file:///home/nana/dev/harness/PLAN.md#L91-L96) |
 | **Phase 4** | The Agent execution loop & guardrails | Planned | [PLAN.md:L97-107](file:///home/nana/dev/harness/PLAN.md#L97-L107) |
@@ -190,6 +190,31 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
   - Markdown layout and schema consistency verified across `PLAN.md`, `DOCUMENTATION.md`, and `AGENTS.md`.
 - **Next Steps**:
   - Implement Phase 1: `Cargo.toml`, `src/lib.rs`, and `src/core/types.rs`.
+
+---
+
+### [2026-09-25] - Implementation of Phase 1 / Issue #1: Core Domain Types & Manifest
+- **Objective**: Implement Issue #1 (`Cargo.toml` minimal manifest, `src/lib.rs`, `src/core/mod.rs`, and foundational message IR in `src/core/types.rs`).
+- **Changes Made**:
+  - Created [`Cargo.toml`](file:///home/nana/dev/harness/Cargo.toml) with zero-bloat dependencies: `serde` (with derive), `serde_json`, and `ureq` (with json feature).
+  - Created [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) and [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs).
+  - Implemented [`src/core/types.rs`](file:///home/nana/dev/harness/src/core/types.rs) containing:
+    - `Role`: `System`, `User`, `Assistant`, `Tool` (lowercase serde serialization).
+    - `Message`: conversation turn envelope with optional content, tool_calls, and tool_call_id.
+    - `ToolCall`, `FunctionCall`, `ToolDefinition`, `FunctionDefinition`, `ToolResult`.
+    - Ergonomic constructor helper functions (`Message::system`, `Message::user`, `Message::assistant`, `Message::tool`, `ToolCall::new`, `ToolResult::success`, `ToolResult::error`).
+    - 5 comprehensive unit tests covering roundtrip serialization, OpenAI JSON format compatibility, and constructor semantics.
+  - Checked off Phase 1 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md).
+- **Architectural Decisions**:
+  - Kept domain structures strictly pure with `#[serde(skip_serializing_if = "Option::is_none")]` to produce clean standard OpenAI payloads without unwanted null keys.
+  - Implemented `Send + Sync + Clone` across all domain types to allow effortless passing across threads and future async adapters.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 5 tests with 5/5 passing (0 failures).
+- **Next Steps**:
+  - Implement Issue #2 / Phase 2 (`src/core/tool.rs` and reference tools in `src/tools/`).
 
 ---
 
