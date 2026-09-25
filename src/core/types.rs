@@ -131,6 +131,16 @@ pub struct FunctionCall {
     pub arguments: String,
 }
 
+impl FunctionCall {
+    /// Creates a new function call given its name and JSON arguments string.
+    pub fn new(name: impl Into<String>, arguments: impl Into<String>) -> Self {
+        Self {
+            name: name.into(),
+            arguments: arguments.into(),
+        }
+    }
+}
+
 /// Definition of an available tool advertised to the LLM during prompt construction.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolDefinition {
