@@ -153,9 +153,26 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
 - **Verification**:
   - Verified Markdown schemas, file structures, and alignment with [PLAN.md](file:///home/nana/dev/harness/PLAN.md).
 - **Next Steps**:
-  - Create GitHub repository `harnessme` under user `309nahe`.
-  - Initialize git tracking and push all foundational documents and code.
+  - Add standard project `.gitignore`.
+  - Establish `dev` working branch workflow.
   - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`).
+
+---
+
+### [2026-09-25] - Project Hygiene & Branching Strategy Setup
+- **Objective**: Add comprehensive `.gitignore` configuration and establish `dev` working branch workflow.
+- **Changes Made**:
+  - Created `.gitignore` ignoring Rust compilation targets (`/target/`), environment files (`.env*`), secrets, IDE configurations, OS artifacts, and scratch directories.
+  - Pushed updates and created the `dev` branch on remote and local workspace.
+  - Established branching model: `main` reserved strictly for stable releases; `dev` used for active feature development and experimentation.
+- **Architectural Decisions**:
+  - Prevent accidental leakage of API keys (`OPENAI_API_KEY`) and secret tokens by strictly ignoring environment credential files.
+  - Adopt git flow where active development happens on `dev`.
+- **Verification**:
+  - Verified untracked files are correctly ignored by git.
+  - Verified `dev` branch creation and remote tracking.
+- **Next Steps**:
+  - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`) on `dev` branch.
 
 ---
 
