@@ -186,6 +186,13 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Add unit tests for prompt building, tool extraction, `find_agy_binary`, and model resolution.
 - [x] Verify live multi-turn agent execution with the user's Google AI Pro subscription.
 
+### Phase 16 (MS2 - Issue #16): Dynamic Model Swapping across Google AI Pro Subscription Models
+- [x] Implement dynamic model discovery `AntigravityProvider::fetch_available_models()` querying `agy models` with fallback catalogue.
+- [x] Support full suite of 14 Google AI Pro subscription models (`gemini-3.1-pro-*`, `gemini-3.8-flash-*`, `gemini-3.7-flash-*`, `gemini-3.6-flash-*`, `claude-sonnet-4-6`, `claude-opus-4-6-thinking`, `gpt-oss-120b-medium`).
+- [x] Add top-level `/swap <num|name>`, `/model <num|name>`, and `/models` commands to the interactive REPL.
+- [x] Display active model indicator `(CURRENT)` and formatted numeric selection catalogue.
+- [x] Add unit tests in `src/core/provider.rs` and `src/main.rs` for dynamic model fetching, numeric shortcuts, and command parsing.
+
 ---
 
 ## 6. Potential Future Enhancements (Post-Milestone 2)
