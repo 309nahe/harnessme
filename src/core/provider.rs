@@ -106,6 +106,18 @@ impl OpenAiCompatibleProvider {
         }
     }
 
+    /// Customizes the API key for bearer authentication.
+    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    /// Sets or clears the optional API key for bearer authentication.
+    pub fn with_optional_api_key(mut self, api_key: Option<String>) -> Self {
+        self.api_key = api_key;
+        self
+    }
+
     /// Customizes the base endpoint URL (e.g. `http://localhost:11434/v1` for Ollama).
     pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
         self.base_url = base_url.into();

@@ -106,10 +106,10 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Handle tool execution errors gracefully (feed errors back to LLM context for self-correction).
 
 ### Phase 5: Verification & CLI Demo
-- [ ] Create a minimal `main.rs` binary.
-- [ ] Read API configuration (API key, base URL, model name) from environment variables (e.g., `OPENAI_API_KEY`, `OPENAI_BASE_URL`).
-- [ ] Provide an interactive REPL in the terminal to converse with the agent and verify autonomous tool usage.
-- [ ] Validate edge cases: invalid tool arguments, tool failures, model hallucinated tool names.
+- [x] Create a minimal `main.rs` binary.
+- [x] Read API configuration (API key, base URL, model name) from environment variables (e.g., `OPENAI_API_KEY`, `OPENAI_BASE_URL`).
+- [x] Provide an interactive REPL in the terminal to converse with the agent and verify autonomous tool usage.
+- [x] Validate edge cases: invalid tool arguments, tool failures, model hallucinated tool names.
 
 ---
 

@@ -115,7 +115,7 @@ Defines the message envelope and tool structures (`Role`, `Message`, `ToolCall`,
 | **Phase 2** | Tool abstraction & in-memory `ToolRegistry` with sample tools | Completed | [PLAN.md:L85-90](file:///home/nana/dev/harness/PLAN.md#L85-L90) |
 | **Phase 3** | Provider abstraction & OpenAI-compatible client | Completed | [PLAN.md:L91-96](file:///home/nana/dev/harness/PLAN.md#L91-L96) |
 | **Phase 4** | The Agent execution loop & guardrails | Completed | [PLAN.md:L97-107](file:///home/nana/dev/harness/PLAN.md#L97-L107) |
-| **Phase 5** | CLI demo, environment parsing & interactive REPL | Planned | [PLAN.md:L108-114](file:///home/nana/dev/harness/PLAN.md#L108-L114) |
+| **Phase 5** | CLI demo, environment parsing & interactive REPL | Completed | [PLAN.md:L108-114](file:///home/nana/dev/harness/PLAN.md#L108-L114) |
 
 ---
 

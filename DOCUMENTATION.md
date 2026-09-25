@@ -228,7 +228,7 @@ Decouple the agent loop from the LLM network layer. The provider accepts the cur
            &self,
            messages: &[Message],
            tools: &[ToolDefinition],
-       ) -> Result<ProviderResponse, ProviderError>;
+        ) -> Result<ProviderResponse, ProviderError>;
    }
    ```
 
@@ -564,6 +564,7 @@ impl Agent {
 - **Max Iterations Guardrail**: Terminating infinite tool-invocation loops deterministically with `AgentError::MaxIterationsExceeded`.
 - **Self-Correcting Tool Error Handling**: Tool execution failures (missing tool, invalid arguments, division by zero) are caught cleanly and fed back as `Role::Tool` messages into the prompt context for model self-correction.
 
+
 ---
 
 ## 8. Configuration & Environment Reference
@@ -828,3 +829,28 @@ impl Tool for TimeTool {
   - `cargo test` ran 23 tests with 23/23 passing (0 failures).
 - **Next Steps**:
   - Implement Issue #5 / Phase 5 (`src/main.rs` CLI interactive REPL & environment loading).
+
+---
+
+### [2026-09-25] - Implementation of Phase 5 / Issue #5: CLI Interactive REPL & Environment Configuration
+- **Objective**: Implement Issue #5 (terminal CLI binary entrypoint `src/main.rs` with environment variable loading, tool initialization, error recovery, and interactive REPL loop).
+- **Changes Made**:
+  - Created [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs):
+    - Configured dynamic environment parsing: `OPENAI_API_KEY` (optional for local models), `OPENAI_BASE_URL` (default: `https://api.openai.com/v1`), `HARNESS_MODEL` (default: `gpt-4o-mini`), `HARNESS_SYSTEM_PROMPT`, `HARNESS_MAX_STEPS` (default: 10), and `HARNESS_TEMPERATURE` (default: 0.7).
+    - Initialized `ToolRegistry` with built-in reference tools `EchoTool` and `CalculatorTool`.
+    - Initialized `OpenAiCompatibleProvider` and configured `Agent` with `AgentConfig`.
+    - Added interactive terminal REPL loop over standard input (`std::io::stdin()`) with prompt `user > ` and output `agent > {response}`.
+    - Added special terminal commands: `exit`/`quit` (terminate loop), `clear`/`reset` (reset conversation history), `history` (inspect full multi-turn conversation memory with tool call identifiers).
+    - Gracefully handled runtime errors and connection failures (`error > {err}`) without terminating the REPL loop.
+  - Enhanced [`src/core/provider.rs`](file:///home/nana/dev/harness/src/core/provider.rs) with `with_api_key` and `with_optional_api_key` builder methods.
+  - Updated [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) and [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md) roadmap tables marking Phase 5 as completed.
+- **Architectural Decisions**:
+  - Maintained zero dependency bloat: standard library `std::env` and `std::io` for CLI parsing and terminal I/O without introducing heavy CLI frameworks (e.g., `clap`).
+  - Guaranteed robust interactive UX with non-fatal error recovery on network drops or invalid tool inputs.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 23 library tests + 0 binary unit tests with 23/23 passing (0 failures).
+- **Next Steps**:
+  - Milestone 1 / STEP 1 is now fully complete and verified. Ready for tagging/release or next milestone planning.
