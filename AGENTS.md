@@ -172,7 +172,24 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
   - Verified untracked files are correctly ignored by git.
   - Verified `dev` branch creation and remote tracking.
 - **Next Steps**:
+  - Write exhaustive STEP 1 Milestone 1 specifications into `DOCUMENTATION.md`.
   - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`) on `dev` branch.
+
+---
+
+### [2026-09-25] - STEP 1 Milestone 1 Technical Specification
+- **Objective**: Author exhaustive STEP 1 specifications in `DOCUMENTATION.md` detailing all components, ideas, and technological requirements for the minimal working agent harness.
+- **Changes Made**:
+  - Updated [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md) Section 3: "STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")".
+  - Detailed philosophy (sequential simplicity, zero killer features, make it work first).
+  - Detailed Part 1 (`Cargo.toml` minimal manifest), Part 2 (`src/core/types.rs` IR), Part 3 (`src/core/tool.rs` registry & trait), Part 4 (`src/core/provider.rs` synchronous HTTP OpenAI client), Part 5 (`src/core/agent.rs` execution loop and safety limits), Part 6 (`src/main.rs` terminal REPL), and Part 7 (acceptance criteria).
+- **Architectural Decisions**:
+  - Concrete definition of domain types, traits, error enums, and request schemas before code writing begins.
+  - Retained strict zero-bloat philosophy: standard library + `serde` + `serde_json` + `ureq`.
+- **Verification**:
+  - Markdown layout and schema consistency verified across `PLAN.md`, `DOCUMENTATION.md`, and `AGENTS.md`.
+- **Next Steps**:
+  - Implement Phase 1: `Cargo.toml`, `src/lib.rs`, and `src/core/types.rs`.
 
 ---
 
