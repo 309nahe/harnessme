@@ -103,7 +103,7 @@ To keep compile times fast and binary sizes small, we keep external crates to th
      - If response has tool calls: execute each tool via `ToolRegistry`, record tool outputs as `Role::Tool` messages, repeat loop.
      - If response is text only: append assistant message and return final response.
   4. Enforce `max_iterations` counter to prevent infinite tool-calling loops.
-  - [x] Handle tool execution errors gracefully (feed errors back to LLM context for self-correction).
+- [x] Handle tool execution errors gracefully (feed errors back to LLM context for self-correction).
 
 
 ### Phase 5: Verification & CLI Demo

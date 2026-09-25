@@ -23,8 +23,8 @@
 - Outlines architectural philosophies, design trade-offs, coding rules, and safety boundaries.
 
 ### 1.2 `DOCUMENTATION.md`: Technical Docs & Official Living Changelog
-- **Primary Source of Truth**: [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md) contains the complete technical reference and the **Living Changelog & Evolution Ledger** (Section 13).
-- **Mandatory Agent Rule**: Whenever you implement a feature, refactor, fix a bug, or complete an issue, you **must append an entry directly into [DOCUMENTATION.md Section 13](file:///home/nana/dev/harness/DOCUMENTATION.md#13-living-changelog--evolution-ledger)** and update the respective technical sections in [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md).
+- **Primary Source of Truth**: [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md) contains the complete technical reference and the **Living Changelog & Evolution Ledger** (Section 15).
+- **Mandatory Agent Rule**: Whenever you implement a feature, refactor, fix a bug, or complete an issue, you **must append an entry directly into [DOCUMENTATION.md Section 15](file:///home/nana/dev/harness/DOCUMENTATION.md#15-living-changelog--evolution-ledger)** and update the respective technical sections in [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md).
 
 ---
 
@@ -116,6 +116,8 @@ Defines the message envelope and tool structures (`Role`, `Message`, `ToolCall`,
 | **Phase 3** | Provider abstraction & OpenAI-compatible client | Completed | [PLAN.md:L91-96](file:///home/nana/dev/harness/PLAN.md#L91-L96) |
 | **Phase 4** | The Agent execution loop & guardrails | Completed | [PLAN.md:L97-107](file:///home/nana/dev/harness/PLAN.md#L97-L107) |
 | **Phase 5** | CLI demo, environment parsing & interactive REPL | Completed | [PLAN.md:L108-114](file:///home/nana/dev/harness/PLAN.md#L108-L114) |
+
+
 
 ---
 
