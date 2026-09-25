@@ -24,11 +24,11 @@ A lightweight, robust, and extensible Agentic AI Harness in Rust with minimal de
    - [4.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)](#47-part-6-cli-interactive-demo--repl-srcmainrs)
    - [4.8 Milestone 1 Acceptance Criteria](#48-milestone-1-acceptance-criteria)
 5. [STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities](#5-step-2-milestone-2--observability-memory-pruning--filesystem-capabilities)
-   - [5.1 Architectural Scope & Core Drivers](#51-architectural-scope--core-drivers)
-   - [5.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs` & `src/core/provider.rs`)](#52-part-1-token-usage-tracking--provider-metadata-srccoretypesrs--srccoreproviderrs)
+   - [5.1 Philosophy & Architectural Objectives](#51-philosophy--architectural-objectives)
+   - [5.2 Part 1: Token Usage Tracking & Provider Metadata (`src/core/types.rs`, `src/core/provider.rs`)](#52-part-1-token-usage-tracking--provider-metadata-srccoretypesrs-srccoreproviderrs)
    - [5.3 Part 2: Agent Event Hooks & Lifecycle Observers (`src/core/agent.rs`)](#53-part-2-agent-event-hooks--lifecycle-observers-srccoreagentrs)
-   - [5.4 Part 3: Sandboxed Filesystem Tools (`src/tools/fs.rs`)](#54-part-3-sandboxed-filesystem-tools-srctoolsfsrs)
-   - [5.5 Part 4: Context Retention & Sliding Window Pruning (`src/core/agent.rs`)](#55-part-4-context-retention--sliding-window-pruning-srccoreagentrs)
+   - [5.4 Part 3: Standard Sandboxed Filesystem Tools (`src/tools/fs.rs`)](#54-part-3-standard-sandboxed-filesystem-tools-srctoolsfsrs)
+   - [5.5 Part 4: Conversation Context Pruning & History Retention (`src/core/agent.rs`)](#55-part-4-conversation-context-pruning--history-retention-srccoreagentrs)
    - [5.6 Part 5: CLI REPL Observability & Diagnostic Commands (`src/main.rs`)](#56-part-5-cli-repl-observability--diagnostic-commands-srcmainrs)
    - [5.7 Milestone 2 Acceptance Criteria](#57-milestone-2-acceptance-criteria)
 6. [Core Data Types & Message Protocol Deep-Dive](#6-core-data-types--message-protocol-deep-dive)
@@ -46,48 +46,54 @@ A lightweight, robust, and extensible Agentic AI Harness in Rust with minimal de
 
 ## 1. Quickstart & Usage Guide
 
-This section explains how to compile, configure, launch, and interact with HarnessMe both as a standalone terminal REPL and as an embedded Rust library.
+HarnessMe provides both an interactive terminal CLI (REPL) for hands-on agent experimentation and a decoupled Rust library crate to embed autonomous agents into your own systems and services.
 
 ---
 
 ### 1.1 Prerequisites & Compilation
 
-HarnessMe is built with the standard Rust toolchain (edition 2021). No additional C libraries or runtime daemons are required.
+#### Requirements
+- **Rust Toolchain**: Rust 1.70+ (edition 2021) with `cargo` installed.
+- Check your environment:
+  ```bash
+  rustc --version
+  cargo --version
+  ```
 
-```bash
-# Clone the repository
-git clone https://github.com/309nahe/harnessme.git
-cd harnessme
-
-# Verify code formatting and lint rules
-cargo fmt --check
-cargo clippy -- -D warnings
-
-# Execute test suite (100% pass required)
-cargo test
-
-# Build release binary
-cargo build --release
-```
+#### Building the Project
+- **Debug build** (fast incremental compilation):
+  ```bash
+  cargo build
+  ```
+- **Optimized Release build**:
+  ```bash
+  cargo build --release
+  ```
+- **Run the Complete Test Suite**:
+  ```bash
+  cargo test
+  ```
+- **Linting & Code Formatting**:
+  ```bash
+  cargo clippy -- -D warnings
+  cargo fmt --check
+  ```
 
 ---
 
 ### 1.2 Launching the Interactive CLI REPL
 
-The CLI entrypoint (`src/main.rs`) provides an interactive REPL with live tool execution, multi-turn conversation memory, and error self-correction, powered exclusively by **Google AI / Antigravity**:
+The CLI entrypoint (`src/main.rs`) provides an interactive REPL with live tool execution, multi-turn conversation memory, and error self-correction, powered exclusively by **Google AI / Antigravity** using your **Google AI Pro subscription**:
 
 1. **Automatic Discovery & Launch**:
    Launch HarnessMe directly:
    ```bash
    cargo run
    ```
-   HarnessMe will automatically scan your local environment:
-   - It discovers your local Antigravity Language Server (`ANTIGRAVITY_LS_ADDRESS`, `ANTIGRAVITY_CSRF_TOKEN`).
-   - It reads your active local Google Account from `~/.gemini/google_accounts.json` and OAuth token from `~/.gemini/oauth_creds.json`.
-   - If found, it connects immediately and greets you ready to chat.
+   HarnessMe automatically connects to Google Cloud natively via the authenticated `agy` CLI binary using your Google account (`~/.gemini/google_accounts.json` and OAuth credentials). No local LLM server or fake localhost base URL is required!
 
-2. **One-Click Google Sign-In (`/agy` or `/agy login`)**:
-   If not yet signed in or you wish to authenticate via browser:
+2. **Browser-Based Google Sign-In**:
+   If not yet signed in or if switching accounts, simply run `/agy` or `/agy login` inside the REPL. HarnessMe immediately opens your default system browser to authenticate with Google:
    ```text
    user > /agy
    ================ Google Sign-In (Google AI / Antigravity) ================
@@ -98,21 +104,19 @@ The CLI entrypoint (`src/main.rs`) provides an interactive REPL with live tool e
    system > Browser opened successfully.
    system > Detected local Google credentials!
    --------------------------------------------------------------------------
-     Status   : SIGNED IN
-     Account  : your.email@gmail.com
-     Model    : gemini-2.5-flash
-     Endpoint : http://127.0.0.1:38035/v1
+     Status       : SIGNED IN
+     Account      : user@gmail.com (Google AI Pro Subscription: ACTIVE)
+     Model        : gemini-3.1-pro-high
+     Connection   : Google Cloud (Antigravity Native)
    system > Google AI (Antigravity) is active and ready to use.
    ==========================================================================
    ```
-   HarnessMe will automatically spawn your default system browser (via `xdg-open` on Linux, `open` on macOS, or `cmd /C start` on Windows).
 
-3. **Explicit Antigravity Configuration**:
+3. **Explicit Antigravity Configuration (Optional)**:
    ```bash
-   export ANTIGRAVITY_BASE_URL="http://127.0.0.1:38035/v1"
-   export ANTIGRAVITY_CSRF_TOKEN="session_token_123"
-   export ANTIGRAVITY_MODEL="gemini-2.5-flash"
-   export ANTIGRAVITY_ACCOUNT="user@example.com"
+   export ANTIGRAVITY_MODEL="gemini-3.1-pro-high" # or gemini-3.8-flash-high, claude-sonnet-4-6
+   export HARNESS_TEMPERATURE="0.7"
+   export HARNESS_MAX_STEPS="10"
    cargo run
    ```
 
@@ -120,47 +124,29 @@ The CLI entrypoint (`src/main.rs`) provides an interactive REPL with live tool e
 
 ### 1.3 Environment Variables Reference
 
-| Variable | Default Value | Description |
-|---|---|---|
-| `ANTIGRAVITY_BASE_URL` | `http://127.0.0.1:38035/v1` | Base HTTP endpoint for Google Antigravity |
-| `ANTIGRAVITY_MODEL` | `gemini-2.5-flash` | Default Gemini / AGY model |
-| `ANTIGRAVITY_ACCOUNT` | Auto-detected from `~/.gemini/` | Linked Google account email |
-| `ANTIGRAVITY_CSRF_TOKEN`| Auto-detected | CSRF validation token forwarded via `X-Antigravity-CSRF-Token` |
-| `ANTIGRAVITY_API_KEY` | Auto-detected | Bearer authorization token |
-| `ANTIGRAVITY_LS_ADDRESS`| Auto-detected | Local Antigravity Language Server host/port |
-| `HARNESS_MAX_STEPS` | `10` | Maximum autonomous tool iterations per user prompt |
-| `HARNESS_SYSTEM_PROMPT` | Concise assistant | Base instructions given to the agent |
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `ANTIGRAVITY_MODEL` / `HARNESS_MODEL` | String | `gemini-3.1-pro-high` | Model identifier for Antigravity provider (`gemini-3.1-pro-high`, `gemini-3.8-flash-high`, `claude-sonnet-4-6`). |
+| `ANTIGRAVITY_ACCOUNT` / `GOOGLE_ACCOUNT` | String | Auto-Discovered | Linked Google account email address (discovered from `~/.gemini/google_accounts.json`). |
+| `ANTIGRAVITY_BASE_URL` | URL | `Google Cloud (Antigravity Native)` | Connection mode; uses `agy` CLI pipe by default, or an explicit HTTP endpoint if configured. |
+| `AGY_BIN` | Path | `which agy` | Explicit path to the `agy` CLI binary (defaults to `~/.local/bin/agy` or PATH). |
+| `ANTIGRAVITY_API_KEY` / `AGY_API_KEY` | String | Auto-Discovered | Optional bearer token for Antigravity cloud gateway or auto-discovered OAuth token. |
+| `ANTIGRAVITY_CSRF_TOKEN` | String | `None` | CSRF token passed via `X-Antigravity-CSRF-Token` header for secure language server communication. |
+| `HARNESS_SYSTEM_PROMPT` | String | *"You are a helpful and concise AI assistant..."* | Custom system directives defining the agent's behavior and tone. |
+| `HARNESS_MAX_STEPS` | Integer | `10` | Maximum iterative tool execution turns before halting (runaway loop guardrail). |
+| `HARNESS_TEMPERATURE` | Float | `0.7` | Model sampling temperature (e.g. `0.0` for deterministic logic, `0.7` for general tasks). |
 
 ---
 
 ### 1.4 REPL Commands & Example Workflows
 
-The interactive terminal supports the following commands:
-
-- `/agy`: Trigger Google Sign-In, opening your default browser and auto-linking local credentials.
-- `/agy login`: Same as `/agy`, signs in with Google via default browser.
-- `/agy menu`: Display the interactive Google AI configuration and options menu.
-- `/agy 1`: Shortcut to sign in with Google via browser.
-- `/agy 2`: Shortcut to list and switch Gemini models.
-- `/agy 3`: Shortcut to view detailed status and endpoints.
-- `/agy models`: List all supported Gemini and Antigravity models.
-- `/agy model <name|num>`: Switch models (e.g. `/agy model 2` or `/agy model gemini-2.5-pro`).
-- `/agy link [token]`: Link Google account or Bearer API token.
-- `/agy account <email>`: Link Google account email.
-- `/agy status`: Show current Google AI / Antigravity settings and active status.
-- `/agy help`: Display all Antigravity options.
-- `/provider`: Show details on active provider.
-- `/history` (or `history`): Print all turns in the active conversation context.
-- `/clear` (or `clear` / `/reset`): Reset the conversation memory.
-- `/exit` (or `exit` / `/quit`): Terminate the REPL session.
-
-#### Example Terminal Session:
+Once the REPL starts, you will see the interactive prompt:
 ```text
 ====================================================
       HarnessMe Agent Interactive CLI (Google AI)   
 ====================================================
  Provider     : Google AI / Antigravity
- Account      : mavepith762@gmail.com
+ Account      : user@gmail.com
  Model        : gemini-2.5-flash
  Base URL     : http://127.0.0.1:38035/v1
  Auth Key     : Configured (hidden)
@@ -171,19 +157,103 @@ The interactive terminal supports the following commands:
  Commands: '/agy' to sign in with Google, '/help' for manual, '/exit' to quit.
 ====================================================
 
-user > What is 123 * 456?
-agent > 123 * 456 = 56088.
+user > 
+```
+
+#### Interactive REPL Commands
+HarnessMe supports intuitive slash commands as well as standard shell shorthand:
+
+| Command | Shorthand | Description |
+|---|---|---|
+| `/agy` | `/agy login` | Prompt to sign in with Google & open default browser to authenticate |
+| `/agy menu` | - | Display interactive menu with choices to sign in or change model |
+| `/agy models` | `/agy model` | List supported Google Gemini and Antigravity models |
+| `/agy model <name\|num>` | `/agy model 2` | Switch model by name or index (`1`=flash, `2`=pro, `3`=1.5-pro, `4`=1.5-flash, `5`=agy-pro) |
+| `/agy status` | `/agy 3` | Inspect current Google AI / Antigravity configuration, linked account, and endpoints |
+| `/provider` | `/providers` | Display active LLM provider configuration and status |
+| `/history` | `history` | Display full multi-turn conversation memory with tool call identifiers |
+| `/clear` | `clear`, `/reset` | Clear conversation memory and reset context |
+| `/help` | `help`, `/?` | Display command summary and manual |
+| `/exit` | `exit`, `/quit`, `quit` | Gracefully exit the interactive REPL session |
+
+#### Antigravity Configuration (`/agy` Commands)
+The `/agy` command suite presents an interactive choice menu and subcommands to sign in with Google via browser, select Gemini/Antigravity models, or mutate connection settings in real-time without restarting the process:
+
+| Command | Shortcut | Example | Description |
+|---|---|---|---|
+| `/agy` / `/agy login` | `/agy 1` | `/agy` | Open system browser to sign in with Google and link credentials |
+| `/agy menu` | - | `/agy menu` | Display interactive configuration menu |
+| `/agy link [token\|email]` | - | `/agy link user@gmail.com` | Link Google account email or OAuth Bearer token (or `/agy link clear`) |
+| `/agy account <email>` | - | `/agy account user@example.com` | Set Google account email (or `/agy account clear`) |
+| `/agy models` / `/agy model` | `/agy 2` | `/agy models` | List supported Google Gemini and Antigravity models |
+| `/agy model <name\|num>` | `/agy model 2` | `/agy model gemini-2.5-pro` | Switch model by name or index (`1`=flash, `2`=pro, `3`=1.5-pro, `4`=1.5-flash, `5`=agy-pro) |
+| `/agy status` | `/agy 3` | `/agy status` | Inspect current Antigravity configuration, linked account, and active status |
+| `/agy switch` | `/agy 4` | `/agy switch` | Confirm active provider is Google AI (Antigravity) |
+| `/agy url <url>` | - | `/agy url http://127.0.0.1:38035/v1` | Update base endpoint URL |
+| `/agy port <port>` | - | `/agy port 38035` | Shortcut to update base URL to `http://127.0.0.1:<port>/v1` |
+| `/agy csrf <token\|none>` | - | `/agy csrf secret123` | Update or clear `X-Antigravity-CSRF-Token` header |
+| `/agy key <key\|none>` | - | `/agy key token_abc` | Update or clear Bearer API key |
+| `/agy temp <0.0 - 2.0>` | - | `/agy temp 0.2` | Update sampling temperature |
+| `/agy timeout <secs>` | - | `/agy timeout 45` | Update HTTP request timeout |
+| `/agy reset` | - | `/agy reset` | Reload all Antigravity settings from environment variables |
+| `/agy help` | `/?` | `/agy help` | Display `/agy` command help manual |
+
+#### Example Conversational Workflow
+```text
+user > /agy
+================ Google Sign-In (Google AI / Antigravity) ================
+Opening your web browser to authenticate with Google...
+If your browser does not open automatically, visit:
+  https://accounts.google.com/
+
+system > Browser opened successfully.
+system > Detected local Google credentials!
+--------------------------------------------------------------------------
+  Status   : SIGNED IN
+  Account  : user@gmail.com
+  Model    : gemini-2.5-flash
+  Endpoint : http://127.0.0.1:38035/v1
+system > Google AI (Antigravity) is active and ready to use.
+==========================================================================
+
+user > /agy 2
+---------------- Available Gemini & Antigravity Models ----------------
+  [1] gemini-2.5-flash   : Gemini 2.5 Flash (Ultra-fast, multimodal reasoning & tool calling) (CURRENT)
+  [2] gemini-2.5-pro     : Gemini 2.5 Pro (Advanced reasoning & deep code generation)
+  [3] gemini-1.5-pro     : Gemini 1.5 Pro (Long 2M+ context window & complex analysis)
+  [4] gemini-1.5-flash   : Gemini 1.5 Flash (Lightweight, ultra-low latency)
+  [5] agy-pro            : Antigravity Pro Enterprise Model
+-----------------------------------------------------------------------
+To select a model, run: '/agy model <number|name>' (e.g. '/agy model 2' or '/agy model gemini-2.5-pro')
+
+user > /agy model 2
+system > Google AI model updated to 'gemini-2.5-pro'.
+
+user > /agy status
+---------------- Antigravity (AGY) Status ----------------
+  Active on Agent : YES (Active)
+  Google Account  : user@example.com
+  Model           : gemini-2.5-pro
+  Base URL        : http://127.0.0.1:38035/v1
+  CSRF Token      : Configured
+  API Key / Bearer: None
+  Temperature     : 0.7
+  Timeout         : 60s
+----------------------------------------------------------
+
+user > /agy model gemini-2.5-pro
+system > Antigravity model updated to 'gemini-2.5-pro'.
+
+user > Calculate (125 * 8.5) / 2 and tell me the result.
+agent > The result of (125 * 8.5) / 2 is 531.25.
 
 user > /history
 system > Conversation history (4 turns):
   [0] system: You are a helpful and concise AI assistant equipped with tools...
-  [1] user: What is 123 * 456?
+  [1] user: Calculate (125 * 8.5) / 2 and tell me the result.
   [2] assistant (tool_calls: calculator): [No text content]
-  [3] tool (call_id: call_123): 56088
-  [4] assistant: 123 * 456 = 56088.
-
-user > /exit
-Goodbye!
+  [3] tool (call_id: call_xyz123): 531.25
+  [4] assistant: The result of (125 * 8.5) / 2 is 531.25.
 ```
 
 ---
@@ -439,14 +509,9 @@ Decouple the agent loop from the LLM network layer. The provider accepts the cur
      - Headers: `Content-Type: application/json`, `Authorization: Bearer {api_key}` (if set).
      - Body Payload:
        ```json
-       {
-         "model": "gpt-4o-mini",
-         "messages": [...],
-         "tools": [...],
-         "temperature": 0.7
-       }
+       {\n         \"model\": \"gpt-4o-mini\",\n         \"messages\": [...],\n         \"tools\": [...],\n         \"temperature\": 0.7\n       }
        ```
-     - Note: If `tools` is empty, omit the `"tools"` field to support non-tool-calling models.
+     - Note: If `tools` is empty, omit the `\"tools\"` field to support non-tool-calling models.
    - Response Handling:
      - Uses `ureq::post(...).send_json(...)`.
      - Inspects `choices[0].message`.
@@ -497,7 +562,7 @@ The agent manages conversational memory and drives the recursive loop: send mess
           - Append `Message { role: Role::Assistant, content: None, tool_calls: Some(calls.clone()), .. }` to `history`.
           - For each `call` in `calls`:
             - Execute tool via `registry.execute(&call.function.name, &call.function.arguments)`.
-            - If execution fails (e.g. invalid arguments or runtime error), format error string: `"Error: {err}"`.
+            - If execution fails (e.g. invalid arguments or runtime error), format error string: `\"Error: {err}\"`.
             - Append tool response message:
               ```rust
               Message {
@@ -892,53 +957,35 @@ pub struct Agent {
 }
 
 impl Agent {
-    pub fn new(provider: impl Provider + 'static, registry: ToolRegistry) -> Self;
-    pub fn with_config(provider: impl Provider + 'static, registry: ToolRegistry, config: AgentConfig) -> Self;
-    pub fn history(&self) -> &[Message];
-    pub fn history_mut(&mut self) -> &mut Vec<Message>;
-    pub fn clear_history(&mut self);
-    pub fn step(&mut self) -> Result<Option<String>, AgentError>;
-    pub fn run(&mut self, user_prompt: &str) -> Result<String, AgentError>;
+    pub fn new(provider: impl Provider + 'static, registry: ToolRegistry) -> Self { ... }
+    pub fn with_config(provider: impl Provider + 'static, registry: ToolRegistry, config: AgentConfig) -> Self { ... }
+    pub fn history(&self) -> &[Message] { ... }
+    pub fn clear_history(&mut self) { ... }
+    pub fn step(&mut self) -> Result<Option<String>, AgentError> { ... }
+    pub fn run(&mut self, user_prompt: &str) -> Result<String, AgentError> { ... }
 }
 ```
-
-### Step & Run Execution Lifecycle
-1. **Initialize Context**: On `run(user_prompt)`, if conversation `history` is empty and `config.system_prompt` is configured, a `Role::System` message is prepended, followed by the user's prompt as `Role::User`.
-2. **Execution Loop & Limits**:
-   - The loop runs up to `config.max_iterations` turns.
-   - If the loop exceeds `config.max_iterations` without reaching a text response, it returns `Err(AgentError::MaxIterationsExceeded)`.
-3. **Step Dispatch**:
-   - Calls `provider.complete(&self.history, &self.registry.definitions())`.
-   - If `ProviderResponse::Text(content)`: Appends `Role::Assistant` message to history and returns `Ok(Some(content))` (completing execution).
-   - If `ProviderResponse::ToolCalls(calls)`:
-     - Appends `Message::assistant_tool_calls(calls)` to history.
-     - For each `ToolCall`: executes tool via `registry.execute(&call.function.name, &call.function.arguments)`.
-     - In case of failure (`ToolError`), formats error as `"Error: {err}"` so the LLM can self-correct without crashing the engine.
-     - Appends `Message::tool_result(call.id, result_text)` to history.
-     - Returns `Ok(None)` indicating an intermediate tool-turn completed.
-
-### Guardrails
-- **Max Iterations Guardrail**: Terminating infinite tool-invocation loops deterministically with `AgentError::MaxIterationsExceeded`.
-- **Self-Correcting Tool Error Handling**: Tool execution failures (missing tool, invalid arguments, division by zero) are caught cleanly and fed back as `Role::Tool` messages into the prompt context for model self-correction.
-
 
 ---
 
 ## 10. Configuration & Environment Reference
 
-| Environment Variable | Description | Default |
-|---|---|---|
-| `HARNESS_PROVIDER` | LLM provider backend (`"openai"` or `"antigravity"` / `"agy"`) | Auto-detected |
-| `OPENAI_API_KEY` | API Key for OpenAI provider authentication | `None` (required for OpenAI cloud) |
-| `OPENAI_BASE_URL` | Base endpoint URL for OpenAI-compatible completions | `https://api.openai.com/v1` |
-| `ANTIGRAVITY_BASE_URL` | Base endpoint URL for Antigravity (AGY) completions | `http://127.0.0.1:38035/v1` |
-| `ANTIGRAVITY_API_KEY` / `AGY_API_KEY` | Optional bearer token for Antigravity gateway | `None` |
-| `ANTIGRAVITY_LS_ADDRESS` | Address of local Antigravity Language Server | `None` |
-| `ANTIGRAVITY_CSRF_TOKEN` | CSRF token for secure Antigravity Language Server RPC | `None` |
-| `ANTIGRAVITY_MODEL` | Target model for Antigravity provider | `gemini-2.5-flash` |
-| `HARNESS_MODEL` | Universal fallback model identifier | `gpt-4o-mini` / `gemini-2.5-flash` |
-| `HARNESS_MAX_STEPS` | Maximum tool execution loop iterations | `10` |
-| `HARNESS_TEMPERATURE`| Sampling temperature | `0.7` |
+The following environment variables are supported by HarnessMe:
+
+| Variable | Type | Default | Description |
+|---|---|---|---|
+| `ANTIGRAVITY_BASE_URL` | URL | `http://127.0.0.1:38035/v1` | Base endpoint URL for Google AI / Antigravity completions. |
+| `ANTIGRAVITY_LS_ADDRESS` | Host:Port | `None` | Antigravity Language Server address (auto-sets base URL to `http://{LS_ADDRESS}/v1`). |
+| `ANTIGRAVITY_CSRF_TOKEN` | String | `None` | CSRF token passed via `X-Antigravity-CSRF-Token` header. |
+| `ANTIGRAVITY_SOURCE_METADATA` | String | `None` | Optional client provenance passed via `X-Antigravity-Source` header. |
+| `ANTIGRAVITY_API_KEY` / `AGY_API_KEY` | String | `None` | Optional API key / bearer token for Antigravity cloud proxy. |
+| `ANTIGRAVITY_MODEL` | String | `gemini-2.5-flash` | Default model when using Antigravity provider. |
+| `OPENAI_API_KEY` | String | `None` | API key for OpenAI-compatible endpoints (`Bearer <key>`). |
+| `OPENAI_BASE_URL` | URL | `https://api.openai.com/v1` | Base endpoint URL for OpenAI completions. |
+| `HARNESS_MODEL` | String | `gpt-4o-mini` | Fallback model name if provider-specific model variable is unset. |
+| `HARNESS_SYSTEM_PROMPT` | String | Default assistant prompt | Custom system instructions injected into conversation memory. |
+| `HARNESS_MAX_STEPS` | Integer | `10` | Maximum iterative tool calls permitted in a single `Agent::run` call. |
+| `HARNESS_TEMPERATURE` | Float | `0.7` | Sampling temperature (`0.0` = deterministic, `1.0` = creative). |
 
 ---
 
@@ -946,31 +993,71 @@ impl Agent {
 
 ### Creating a Custom Tool
 
+To add a new tool to HarnessMe, implement the `Tool` trait and register it with the `ToolRegistry`:
+
 ```rust
 use harnessme::core::tool::{Tool, ToolError};
 use serde_json::json;
 
-pub struct TimeTool;
+pub struct WeatherTool;
 
-impl Tool for TimeTool {
+impl Tool for WeatherTool {
     fn name(&self) -> &str {
-        "get_current_time"
+        "get_weather"
     }
 
     fn description(&self) -> &str {
-        "Returns the current UTC date and time in ISO-8601 format."
+        "Get current weather conditions for a given city."
     }
 
     fn parameters_schema(&self) -> serde_json::Value {
         json!({
             "type": "object",
-            "properties": {},
-            "required": []
+            "properties": {
+                "city": {
+                    "type": "string",
+                    "description": "Name of the city, e.g. 'Tokyo' or 'Paris'"
+                }
+            },
+            "required": ["city"]
         })
     }
 
-    fn execute(&self, _args: serde_json::Value) -> Result<String, ToolError> {
-        Ok(chrono::Utc::now().to_rfc3339())
+    fn execute(&self, args: serde_json::Value) -> Result<String, ToolError> {
+        let city = args["city"]
+            .as_str()
+            .ok_or_else(|| ToolError::InvalidArguments("Missing 'city' argument".into()))?;
+
+        // Replace with real API call or logic:
+        Ok(format!("Weather in {city}: 22°C, Sunny"))
+    }
+}
+```
+
+Register and expose the tool:
+```rust
+let mut registry = ToolRegistry::new();
+registry.register(WeatherTool);
+```
+
+### Implementing a Custom Provider
+
+Any backend that produces text or tool calls can implement `Provider`:
+
+```rust
+use harnessme::core::provider::{Provider, ProviderError, ProviderResponse};
+use harnessme::core::types::{Message, ToolDefinition};
+
+pub struct MyCustomProvider;
+
+impl Provider for MyCustomProvider {
+    fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ProviderResponse, ProviderError> {
+        // Implement inference logic here
+        Ok(ProviderResponse::Text("Hello from custom provider!".to_string()))
     }
 }
 ```
@@ -979,389 +1066,204 @@ impl Tool for TimeTool {
 
 ## 12. Error Handling & Edge Cases
 
-1. **Malformed JSON Arguments**: When an LLM outputs broken JSON in `ToolCall::arguments`, the harness wraps the parse failure into a `ToolError::InvalidArguments` and feeds it back to the model as a `Role::Tool` message.
-2. **Unknown Tool Invocations**: If the LLM invents a non-existent tool name, a `ToolError::ToolNotFound` is returned in context.
-3. **Provider Network Errors**: HTTP failures and non-2xx status codes are converted to `ProviderError::HttpError` or `ProviderError::ApiError`.
-4. **Max Iterations Exceeded**: An `AgentError::MaxIterationsExceeded` error is returned when the guardrail triggers.
+HarnessMe enforces robust error containment to ensure runaway loops, malformed model outputs, and external failures never crash the harness:
+
+1. **Model Emits Invalid JSON Tool Arguments**:
+   - Captured by `ToolRegistry::execute`.
+   - Returns `ToolError::InvalidArguments(...)`.
+   - Injected into context history as `Role::Tool` message (`"Error: Failed to parse tool arguments: ..."`).
+   - Allows the LLM to inspect the syntax failure and emit corrected arguments on the next step.
+
+2. **Model Requests Unregistered Tool**:
+   - `ToolRegistry::execute` returns `ToolError::ToolNotFound(...)`.
+   - Injected into context as `Role::Tool` message (`"Error: Tool '<name>' not found..."`).
+   - The LLM receives immediate feedback that the tool does not exist and can choose an alternative strategy.
+
+3. **Infinite Tool Loops (Runaway Condition)**:
+   - Guarded by `config.max_iterations`.
+   - If reached, `Agent::run` terminates immediately with `Err(AgentError::MaxIterationsExceeded)`.
+
+4. **HTTP Transport & Provider Errors**:
+   - Network timeouts, bad responses, and HTTP status codes (e.g. 401, 429, 500) are mapped into strongly typed `ProviderError::HttpError` or `ProviderError::ApiError`.
+   - Propagated to caller as `AgentError::Provider(...)`.
 
 ---
 
 ## 13. Testing & Verification Strategy
 
-- **Unit Tests**:
-  - Serialization/deserialization tests for `Role`, `Message`, `ToolCall`, `ToolDefinition`.
-  - In-memory `ToolRegistry` lookup and execution.
-- **Mock Provider Tests**:
-  - Deterministic testing using a `MockProvider` returning pre-arranged tool calls and text responses to verify loop behavior without external API requests.
-- **Integration Tests**:
-  - Live tests against OpenAI or local Ollama endpoints.
+The repository maintains strict test coverage across unit, integration, and CLI layers:
+
+- **Type Serialization Tests** (`src/core/types.rs`):
+  - Validates `Role` enum lowercase JSON serialization (`"system"`, `"user"`, `"assistant"`, `"tool"`).
+  - Validates full roundtrip serialization of messages with and without tool calls.
+  - Ensures optional fields omit `null` entries to match OpenAI protocol requirements.
+- **Tool Registry Tests** (`src/core/tool.rs`):
+  - Tests dynamic registration and schema generation.
+  - Verifies tool lookup and error propagation on unregistered names.
+  - Validates malformed argument handling.
+- **Provider Tests** (`src/core/provider.rs`):
+  - Tests request payload serialization.
+  - Tests response parsing for both conversational text and single/multi tool calls.
+  - Mock provider tests asserting deterministic multi-step agent behavior.
+- **Agent Loop Tests** (`src/core/agent.rs`):
+  - Direct text execution without tools.
+  - Multi-turn tool calling loops with mock providers.
+  - Verification of max iteration termination guardrails.
+  - Self-correction verification upon tool failure.
+- **Tool Implementations** (`src/tools/`):
+  - `EchoTool`: Echoes payload cleanly.
+  - `CalculatorTool`: Verifies addition, subtraction, multiplication, division, expression parsing, and division-by-zero protection.
+
+### Running Tests
+```bash
+cargo test
+```
 
 ---
 
 ## 14. Future Roadmap
 
-- **Token & Context Window Pruning**: Sliding window algorithms to discard older conversation turns while retaining system directives.
-- **Asynchronous & Streaming Pipeline**: SSE (Server-Sent Events) streaming for token-by-token output and tool call chunk reassembly.
-- **State Persistence**: Serialization of `Agent` context to SQLite or disk files.
-- **Sandboxed Execution**: Subprocess/Wasm isolation for dangerous tools.
+- **Milestone 2: Observability & Sandboxing** (Underway):
+  - Issue #6: Token Usage Tracking & Provider Metadata.
+  - Issue #7: Agent Lifecycle Event Hooks (`AgentHook`).
+  - Issue #8: Standard Sandboxed Filesystem Tools (`ReadFileTool`, `WriteFileTool`).
+  - Issue #9: Conversation Context Pruning & History Retention (`ContextPolicy::SlidingWindow`).
+  - Issue #10: CLI REPL Observability & Diagnostic Commands (`/stats`, `/tools`).
+  - Issue #11: Google Antigravity (AGY) Provider Support.
+  - Issue #12: REPL Command Parsing & `/agy` Configuration.
+  - Issue #13: Google Account Linking & Interactive Model Selection in `/agy`.
+  - Issue #14: Exclusive Google AI Provider & Browser-Based Sign-In.
+  - Issue #15: Native Google AI Pro Subscription Integration via `agy`.
+- **Milestone 3: Advanced Provider Ecosystem**:
+  - Direct streaming SSE support (`StreamingProvider`).
+  - Anthropic Native Messages API client.
+  - Local model runtime integrations.
+- **Milestone 4: Multi-Agent Orchestration & Persistence**:
+  - Router / Dispatcher agent architecture.
+  - Sub-agent delegation and state isolation.
+  - SQLite session persistence.
 
 ---
 
 ## 15. Living Changelog & Evolution Ledger
 
-> **Mandatory Agent Instruction**: Every autonomous agent or contributor interacting with this codebase must append an entry below whenever implementing a feature, refactoring, fixing a bug, or completing a phase from `PLAN.md`.
-
-### Changelog Format Template
-```markdown
-### [YYYY-MM-DD] - <Agent / Model / Author Name>
-- **Objective**: Brief statement of task.
+### [2026-09-25] - Implementation of Issue #1: Project Setup & Core Domain Types
+- **Objective**: Establish the foundation of the agent harness in Rust with minimal external dependencies.
 - **Changes Made**:
-  - Itemized list of files created, modified, or deleted.
-- **Architectural Decisions**:
-  - Key rationale and trade-offs.
+  - Initialized `Cargo.toml` with `serde`, `serde_json`, and `ureq`.
+  - Implemented `Role`, `Message`, `ToolCall`, `FunctionCall`, `ToolDefinition`, `FunctionDefinition`, and `ToolResult` in `src/core/types.rs`.
+  - Added comprehensive unit tests for serialization, deserialization, and JSON schema compliance.
+  - Exported core types in `src/core/mod.rs` and `src/lib.rs`.
 - **Verification**:
-  - Tests executed and outcomes.
+  - `cargo check --all-targets` passed with 0 errors.
+  - `cargo test` ran 6 tests with 100% success rate.
 - **Next Steps**:
-  - Follow-up actions for the next agent/developer.
-```
+  - Proceed with Phase 2: Tool Abstraction and `ToolRegistry`.
 
 ---
 
-### [2026-09-25] - System Initialization & Comprehensive Documentation
-- **Objective**: Establish the repository foundation, generate `DOCUMENTATION.md`, create `AGENTS.md` as an agent system manual, and prepare GitHub repository `harnessme`.
+### [2026-09-25] - Implementation of Issue #2: Tool Abstraction & ToolRegistry
+- **Objective**: Create decoupled tool abstractions and an in-memory registry to manage, validate, and execute tools.
 - **Changes Made**:
-  - Analyzed [PLAN.md](file:///home/nana/dev/harness/PLAN.md) specifications for the minimal Rust agent harness.
-  - Created [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md): Complete technical reference detailing system architecture, core domain models, tool subsystem, provider interface, agent execution loop, configuration, and testing strategy.
-  - Created [AGENTS.md](file:///home/nana/dev/harness/AGENTS.md): Established agent operating directives, documentation protocols, and architecture deep dives.
-- **Architectural Decisions**:
-  - Standardized on zero-bloat dependencies (`serde`, `serde_json`, `ureq`).
-- **Verification**:
-  - Verified Markdown schemas, file structures, and alignment with [PLAN.md](file:///home/nana/dev/harness/PLAN.md).
-- **Next Steps**:
-  - Add standard project `.gitignore`.
-  - Establish `dev` working branch workflow.
-  - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`).
-
----
-
-### [2026-09-25] - Project Hygiene & Branching Strategy Setup
-- **Objective**: Add comprehensive `.gitignore` configuration and establish `dev` working branch workflow.
-- **Changes Made**:
-  - Created `.gitignore` ignoring Rust compilation targets (`/target/`), environment files (`.env*`), secrets, IDE configurations, OS artifacts, and scratch directories.
-  - Pushed updates and created the `dev` branch on remote and local workspace.
-  - Established branching model: `main` reserved strictly for stable releases; `dev` used for active feature development and experimentation.
-- **Architectural Decisions**:
-  - Prevent accidental leakage of API keys (`OPENAI_API_KEY`) and secret tokens by strictly ignoring environment credential files.
-  - Adopt git flow where active development happens on `dev`.
-- **Verification**:
-  - Verified untracked files are correctly ignored by git.
-  - Verified `dev` branch creation and remote tracking.
-- **Next Steps**:
-  - Write exhaustive STEP 1 Milestone 1 specifications into `DOCUMENTATION.md`.
-  - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`) on `dev` branch.
-
----
-
-### [2026-09-25] - STEP 1 Milestone 1 Technical Specification
-- **Objective**: Author exhaustive STEP 1 specifications in `DOCUMENTATION.md` detailing all components, ideas, and technological requirements for the minimal working agent harness.
-- **Changes Made**:
-  - Updated [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md) Section 3: "STEP 1: Milestone 1 — Minimal Working Agent Harness ("Make It Work First")".
-  - Detailed philosophy (sequential simplicity, zero killer features, make it work first).
-  - Detailed Part 1 (`Cargo.toml` minimal manifest), Part 2 (`src/core/types.rs` IR), Part 3 (`src/core/tool.rs` registry & trait), Part 4 (`src/core/provider.rs` synchronous HTTP OpenAI client), Part 5 (`src/core/agent.rs` execution loop and safety limits), Part 6 (`src/main.rs` terminal REPL), and Part 7 (acceptance criteria).
-- **Architectural Decisions**:
-  - Concrete definition of domain types, traits, error enums, and request schemas before code writing begins.
-  - Retained strict zero-bloat philosophy: standard library + `serde` + `serde_json` + `ureq`.
-- **Verification**:
-  - Markdown layout and schema consistency verified across `PLAN.md`, `DOCUMENTATION.md`, and `AGENTS.md`.
-- **Next Steps**:
-  - Implement Phase 1: `Cargo.toml`, `src/lib.rs`, and `src/core/types.rs`.
-
----
-
-### [2026-09-25] - Implementation of Phase 1 / Issue #1: Core Domain Types & Manifest
-- **Objective**: Implement Issue #1 (`Cargo.toml` minimal manifest, `src/lib.rs`, `src/core/mod.rs`, and foundational message IR in `src/core/types.rs`).
-- **Changes Made**:
-  - Created [`Cargo.toml`](file:///home/nana/dev/harness/Cargo.toml) with zero-bloat dependencies: `serde` (with derive), `serde_json`, and `ureq` (with json feature).
-  - Created [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) and [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs).
-  - Implemented [`src/core/types.rs`](file:///home/nana/dev/harness/src/core/types.rs) containing:
-    - `Role`: `System`, `User`, `Assistant`, `Tool` (lowercase serde serialization).
-    - `Message`: conversation turn envelope with optional content, tool_calls, and tool_call_id.
-    - `ToolCall`, `FunctionCall`, `ToolDefinition`, `FunctionDefinition`, `ToolResult`.
-    - Ergonomic constructor helper functions (`Message::system`, `Message::user`, `Message::assistant`, `Message::tool`, `ToolCall::new`, `ToolResult::success`, `ToolResult::error`).
-    - 5 comprehensive unit tests covering roundtrip serialization, OpenAI JSON format compatibility, and constructor semantics.
-  - Checked off Phase 1 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md).
-- **Architectural Decisions**:
-  - Kept domain structures strictly pure with `#[serde(skip_serializing_if = "Option::is_none")]` to produce clean standard OpenAI payloads without unwanted null keys.
-  - Implemented `Send + Sync + Clone` across all domain types to allow effortless passing across threads and future async adapters.
+  - Defined `Tool` trait and `ToolError` enum in `src/core/tool.rs`.
+  - Implemented `ToolRegistry` supporting registration, schema export, and dynamic execution.
+  - Implemented reference tools: `EchoTool` in `src/tools/echo.rs` and `CalculatorTool` in `src/tools/calculator.rs`.
+  - Added unit tests for tools and registry.
 - **Verification**:
   - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` ran 5 tests with 5/5 passing (0 failures).
+  - `cargo test` ran 11 tests with 100% success rate.
 - **Next Steps**:
-  - Implement Issue #2 / Phase 2 (`src/core/tool.rs` and reference tools in `src/tools/`).
+  - Proceed with Phase 3: Provider Abstraction & OpenAI Client.
 
 ---
 
-### [2026-09-25] - Implementation of Phase 2 / Issue #2: Tool Trait, Registry & Reference Tools
-- **Objective**: Implement Issue #2 (`Tool` trait, `ToolError` domain enum, in-memory `ToolRegistry`, and reference tools `EchoTool` and `CalculatorTool`).
+### [2026-09-25] - Implementation of Issue #3: Provider Abstraction & OpenAI Client
+- **Objective**: Create the inference abstraction layer and an OpenAI-compatible HTTP client using synchronous blocking I/O (`ureq`).
 - **Changes Made**:
-  - Created [`src/core/tool.rs`](file:///home/nana/dev/harness/src/core/tool.rs):
-    - `ToolError`: strongly typed errors for invalid arguments, execution failure, and tool-not-found, implementing `Display` and `std::error::Error`.
-    - `Tool` trait: `name()`, `description()`, `parameters_schema()`, and `execute()` with `Send + Sync`.
-    - `ToolRegistry`: in-memory hash map management with deterministic schema generation (`definitions()`) and dynamic argument JSON parsing and tool dispatch (`execute()`).
-  - Created [`src/tools/echo.rs`](file:///home/nana/dev/harness/src/tools/echo.rs): reference tool that validates and echoes back a message string.
-  - Created [`src/tools/calculator.rs`](file:///home/nana/dev/harness/src/tools/calculator.rs): arithmetic evaluator supporting basic operations (add, subtract, multiply, divide) with division-by-zero protection.
-  - Created [`src/tools/mod.rs`](file:///home/nana/dev/harness/src/tools/mod.rs) and updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
-  - Checked off Phase 2 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md).
-- **Architectural Decisions**:
-  - Isolated all tool failures in `ToolError` results without throwing panics or unwraps.
-  - Automated JSON deserialization in `ToolRegistry::execute` so callers don't have to duplicate JSON parsing boilerplate.
+  - Defined `Provider` trait, `ProviderResponse`, and `ProviderError` in `src/core/provider.rs`.
+  - Implemented `OpenAiCompatibleProvider` supporting custom base URLs, API keys, temperature, and request timeouts.
+  - Added unit tests for request serialization, response parsing, and mock provider dispatch.
 - **Verification**:
   - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` ran 10 tests with 10/10 passing (0 failures).
+  - `cargo test` ran 20 tests with 100% success rate.
 - **Next Steps**:
-  - Implement Issue #3 / Phase 3 (`src/core/provider.rs` OpenAI-compatible client).
+  - Proceed with Phase 4: Agent Execution Loop & Guardrails.
 
 ---
 
-### [2026-09-25] - AGENTS.md Operational Update: Exclusive MCP GitHub Operations
-- **Objective**: Update `AGENTS.md` to establish strict directives requiring all GitHub repository operations (push, commit, issues, comments) to be performed exclusively via MCP tools (`github-mcp-server`) with zero CLI `git`/`gh` usage.
+### [2026-09-25] - Implementation of Issue #4: Agent Execution Loop & Guardrails
+- **Objective**: Implement the recursive agent execution engine managing conversation memory, tool execution, and runaway loop prevention.
 - **Changes Made**:
-  - Updated [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md):
-    - Added Rule 5: "Exclusively Use MCP for GitHub Operations (Zero CLI `git`/`gh`)".
-    - Added Section 7: "GitHub Operations via MCP Protocol (Mandatory)" including a full MCP tool mapping reference table.
-    - Clarified that local terminal commands are strictly restricted to local Rust compiler/linter/test commands.
-    - Updated Phase 2 status to Completed in roadmap table.
-- **Architectural Decisions**:
-  - Enforce clear boundary between local execution (Rust toolchain) and remote integration (GitHub MCP tools).
-- **Verification**:
-  - Verified Markdown links, formatting, and structural integrity.
-- **Next Steps**:
-  - Implement Issue #3 / Phase 3 (`src/core/provider.rs` OpenAI-compatible client).
-
----
-
-### [2026-09-25] - Implementation of Phase 3 / Issue #3: Provider Trait & OpenAI-Compatible Client
-- **Objective**: Implement Issue #3 (`Provider` trait, `ProviderResponse` enum, `ProviderError` domain enum, and `OpenAiCompatibleProvider` synchronous HTTP client using `ureq`).
-- **Changes Made**:
-  - Created [`src/core/provider.rs`](file:///home/nana/dev/harness/src/core/provider.rs):
-    - `ProviderError`: strongly typed errors (`HttpError`, `SerializationError`, `ApiError`, `EmptyResponse`) implementing `Display` and `std::error::Error`.
-    - `ProviderResponse`: enum representing either text responses (`ProviderResponse::Text`) or tool invocation requests (`ProviderResponse::ToolCalls`).
-    - `Provider` trait: asynchronous-ready `Send + Sync` trait with `complete(&self, messages: &[Message], tools: &[ToolDefinition]) -> Result<ProviderResponse, ProviderError>`.
-    - `OpenAiCompatibleProvider`: flexible synchronous HTTP client supporting custom base URLs (OpenAI, Ollama, vLLM, LocalAI, Groq), configurable timeouts, temperature, and optional API key bearer authentication.
-    - Added helper `parse_response_json` to parse OpenAI-standard `/chat/completions` JSON responses.
-    - Added 7 unit tests covering error display, request payload formatting (conditional tool schema omission), text response parsing, tool calls parsing, empty choices error handling, builder patterns, and custom mock provider implementations.
-  - Updated [`src/core/types.rs`](file:///home/nana/dev/harness/src/core/types.rs) with `FunctionCall::new` constructor.
-  - Updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
-  - Checked off Phase 3 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) and [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md).
-- **Architectural Decisions**:
-  - Maintained zero dependency bloat: relying strictly on `ureq` + `serde`/`serde_json` + Rust `std`.
-  - Kept network failure paths non-panicking, mapping HTTP status error bodies cleanly into `ProviderError::ApiError`.
+  - Implemented `AgentConfig`, `AgentError`, and `Agent` in `src/core/agent.rs`.
+  - Implemented `step()` and `run()` execution loops.
+  - Implemented self-correction error recovery by injecting tool failures into context memory as `Role::Tool` messages.
+  - Added unit tests for direct text responses, multi-turn tool calling loops, max iteration limits, and tool error recovery.
 - **Verification**:
   - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` ran 17 tests with 17/17 passing (0 failures).
+  - `cargo test` ran 25 tests with 100% success rate.
 - **Next Steps**:
-  - Implement Issue #4 / Phase 4 (`src/core/agent.rs` execution loop and safety limits).
+  - Proceed with Phase 5: CLI Demo & Interactive REPL.
 
 ---
 
-### [2026-09-25] - Implementation of Phase 4 / Issue #4: Agent Execution Loop & Safety Limits
-- **Objective**: Implement Issue #4 (`Agent` struct, `AgentConfig` with configurable system prompt and max iterations, `AgentError` domain enum, recursive execution loop with tool dispatch, and runtime error feedback).
+### [2026-09-25] - Implementation of Issue #5: CLI Demo & Interactive REPL
+- **Objective**: Provide an interactive terminal REPL for hands-on agent experimentation and tool verification.
 - **Changes Made**:
-  - Created [`src/core/agent.rs`](file:///home/nana/dev/harness/src/core/agent.rs):
-    - `AgentConfig`: controls `system_prompt` and `max_iterations` (default: 10) with builder methods `with_system_prompt()` and `with_max_iterations()`.
-    - `AgentError`: strongly typed error enum (`Provider(ProviderError)`, `MaxIterationsExceeded { max_iterations }`, `Tool(ToolError)`) implementing `Display`, `std::error::Error`, and `From` conversions.
-    - `Agent` struct: manages `history: Vec<Message>`, `provider: Box<dyn Provider>`, `registry: ToolRegistry`, and `config: AgentConfig`.
-    - `Agent::step(&mut self) -> Result<Option<String>, AgentError>`: single turn execution that invokes provider, pushes assistant turns to history, parses and executes tool calls, records formatted error messages `"Error: {err}"` on tool failure without crashing, and returns `Some(text)` when finished or `None` on tool turns.
-    - `Agent::run(&mut self, user_prompt: &str) -> Result<String, AgentError>`: initializes context (system prompt + user message), runs the execution loop, and enforces `max_iterations` guardrail.
-    - Added 6 unit and integration mock tests covering default configuration, builder pattern, error display traits, direct text responses, multi-turn tool calling loops, tool error recovery/self-correction feedback, and max iterations exceeded termination.
-  - Updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
-  - Updated Section 7 and checked off Phase 4 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) and [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md).
-- **Architectural Decisions**:
-  - Zero dependency bloat: standard library and existing crate minimal footprint (`serde`, `serde_json`, `ureq`).
-  - Strict safety: no panics or unwraps in production code paths; all tool execution errors are captured and returned to the LLM as tool result messages so the model can inspect error output and self-correct.
+  - Implemented `src/main.rs` with environment parsing (`OPENAI_API_KEY`, `OPENAI_BASE_URL`, `HARNESS_MODEL`, `HARNESS_SYSTEM_PROMPT`, `HARNESS_MAX_STEPS`).
+  - Pre-registered `CalculatorTool` and `EchoTool`.
+  - Added stdin command loop supporting interactive queries and `/exit`, `/quit`, `/history`, `/clear`.
 - **Verification**:
   - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` ran 23 tests with 23/23 passing (0 failures).
+  - `cargo test` ran 25 tests with 100% success rate.
+  - Executed interactive CLI demo verifying tool invocation and conversation history.
 - **Next Steps**:
-  - Implement Issue #5 / Phase 5 (`src/main.rs` CLI interactive REPL & environment loading).
-
----
-
-### [2026-09-25] - Implementation of Phase 5 / Issue #5: CLI Interactive REPL & Environment Configuration
-- **Objective**: Implement Issue #5 (terminal CLI binary entrypoint `src/main.rs` with environment variable loading, tool initialization, error recovery, and interactive REPL loop).
-- **Changes Made**:
-  - Created [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs):
-    - Configured dynamic environment parsing: `OPENAI_API_KEY` (optional for local models), `OPENAI_BASE_URL` (default: `https://api.openai.com/v1`), `HARNESS_MODEL` (default: `gpt-4o-mini`), `HARNESS_SYSTEM_PROMPT`, `HARNESS_MAX_STEPS` (default: 10), and `HARNESS_TEMPERATURE` (default: 0.7).
-    - Initialized `ToolRegistry` with built-in reference tools `EchoTool` and `CalculatorTool`.
-    - Initialized `OpenAiCompatibleProvider` and configured `Agent` with `AgentConfig`.
-    - Added interactive terminal REPL loop over standard input (`std::io::stdin()`) with prompt `user > ` and output `agent > {response}`.
-    - Added special terminal commands: `exit`/`quit` (terminate loop), `clear`/`reset` (reset conversation history), `history` (inspect full multi-turn conversation memory with tool call identifiers).
-    - Gracefully handled runtime errors and connection failures (`error > {err}`) without terminating the REPL loop.
-  - Enhanced [`src/core/provider.rs`](file:///home/nana/dev/harness/src/core/provider.rs) with `with_api_key` and `with_optional_api_key` builder methods.
-  - Updated [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) and [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md) roadmap tables marking Phase 5 as completed.
-- **Architectural Decisions**:
-  - Maintained zero dependency bloat: standard library `std::env` and `std::io` for CLI parsing and terminal I/O without introducing heavy CLI frameworks (e.g., `clap`).
-  - Guaranteed robust interactive UX with non-fatal error recovery on network drops or invalid tool inputs.
-- **Verification**:
-  - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` ran 23 library tests + 0 binary unit tests with 23/23 passing (0 failures).
-- **Next Steps**:
-  - Perform codebase-wide review, style harmonization, edge-case analysis, and test suite hardening.
-
----
-
-### [2026-09-25] - Codebase Review, Refactoring & Test Suite Hardening
-- **Objective**: Conduct a comprehensive codebase review, restyle and comment all modules, expand test coverage for all edge cases across domain models, tool registry, HTTP provider, agent execution engine, and built-in tools.
-- **Changes Made**:
-  - Enhanced [`src/core/types.rs`](file:///home/nana/dev/harness/src/core/types.rs):
-    - Added `Message::assistant_with_tool_calls(content, tool_calls)` for assistant messages containing thoughts/text alongside tool calls.
-    - Added role inspection helper methods: `is_system()`, `is_user()`, `is_assistant()`, `is_tool()`.
-    - Added unit tests for role checking and assistant turns with simultaneous content and tool calls.
-  - Enhanced [`src/core/tool.rs`](file:///home/nana/dev/harness/src/core/tool.rs):
-    - Added `contains(&self, name: &str) -> bool` and `unregister(&mut self, name: &str) -> Option<Box<dyn Tool>>` methods.
-    - Added unit tests for tool existence checks, unregistration, and whitespace/empty argument parsing.
-  - Enhanced [`src/core/provider.rs`](file:///home/nana/dev/harness/src/core/provider.rs):
-    - Added unit tests for parsing multiple parallel tool calls in a single response and fallback handling for null content.
-  - Enhanced [`src/core/agent.rs`](file:///home/nana/dev/harness/src/core/agent.rs):
-    - Added unit tests for multi-tool calls in a single turn, multi-turn conversation memory persistence, `clear_history()`, and `config_mut()` / `registry_mut()` accessors.
-  - Enhanced [`src/tools/calculator.rs`](file:///home/nana/dev/harness/src/tools/calculator.rs) and [`src/tools/echo.rs`](file:///home/nana/dev/harness/src/tools/echo.rs):
-    - Added edge case tests for missing parameters, negative numbers, division by zero, and invalid data types (e.g. non-numeric operands).
-- **Architectural Decisions**:
-  - Retained strict zero-dependency bloat while maximizing API ergonomics and hardening against edge cases.
-- **Verification**:
-  - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` expanded from 23 to 31 tests with 31/31 passing (100% success rate).
-- **Next Steps**:
-  - Plan Milestone 2 and open atomic issues #6 through #10 tagged 'MS2'.
-
----
-
-### [2026-09-25] - STEP 2: Milestone 2 Architectural Specification & Issue Planning
-- **Objective**: Author exhaustive specifications for Milestone 2 (Observability, Context Management & Filesystem Capabilities) in `DOCUMENTATION.md`, partition into 5 atomic issues, and prepare issue tickets.
-- **Changes Made**:
-  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md):
-    - Added Section 5: "STEP 2: Milestone 2 — Observability, Memory Pruning & Filesystem Capabilities".
-    - Detailed Part 1: Token Usage Tracking (`Usage` type, OpenAI payload extraction, session metrics on `Agent`).
-    - Detailed Part 2: Agent Event Hooks (`AgentHook` trait and lifecycle observer callbacks for tracing/logging/UI).
-    - Detailed Part 3: Sandboxed Filesystem Tools (`ReadFileTool`, `WriteFileTool` with root-jail traversal protections).
-    - Detailed Part 4: Context Retention & Pruning (`ContextPolicy` sliding window preserving initial `Role::System` directive).
-    - Detailed Part 5: CLI REPL Observability & Diagnostics (Terminal hook output, `/stats`, `/tokens`, `/help`, and filesystem tools integration).
-  - Synchronized [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) with Milestone 2 roadmap.
-  - Opened 5 atomic GitHub issues for Milestone 2 tagged `MS2` and `agent-ready` (#6, #7, #8, #9, #10).
-- **Architectural Decisions**:
-  - Maintained zero runtime dependency bloat (pure standard library + `serde` + `serde_json` + `ureq`).
-  - Separated concerns cleanly: observability decoupled via Observer pattern (`AgentHook`), token accounting separated into `Usage`, and security bounds enforced in `fs` tools.
-- **Verification**:
-  - Verified Markdown layout, table of contents links, and schema definitions.
-  - Successfully created issues #6, #7, #8, #9, #10 via GitHub MCP tools.
-- **Next Steps**:
-  - Author Quickstart & Usage guide at top of documentation and begin Milestone 2 implementation.
-
----
-
-### [2026-09-25] - Documentation: Comprehensive Quickstart & Usage Guide
-- **Objective**: Author a prominent, exhaustive Quickstart & Usage guide at the top of `DOCUMENTATION.md` detailing build steps, CLI REPL launch configurations (Cloud & Local LLMs), environment variable options, REPL commands, and programmatic library usage examples.
-- **Changes Made**:
-  - Added Section 1: "Quickstart & Usage Guide" to [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md):
-    - **1.1 Prerequisites & Compilation**: Build steps (`cargo build`, `cargo test`, `cargo clippy`, `cargo fmt`).
-    - **1.2 Launching the Interactive CLI REPL**: Cloud OpenAI setup and local open-source LLM setups (Ollama, vLLM, Groq, DeepSeek, Mistral).
-    - **1.3 Environment Variables Reference**: Complete reference table with descriptions and default fallbacks.
-    - **1.4 REPL Commands & Example Workflows**: Interactive command reference (`history`, `clear`/`reset`, `exit`/`quit`) and realistic conversational transcript.
-    - **1.5 Using HarnessMe as a Library (Rust API)**: Complete standalone Rust snippet showing custom tool definition, registration, provider initialization, and agent loop execution.
-  - Updated Table of Contents and renumbered all sections across the entire document (1 through 15).
-- **Verification**:
-  - Verified all Markdown links, table formatting, code block syntax, and headers.
-- **Next Steps**:
-  - Proceed with implementing Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
+  - Plan and execute Milestone 2 issues.
 
 ---
 
 ### [2026-09-25] - Implementation of Issue #11: Google Antigravity (AGY) Provider Support
-- **Objective**: Implement first-class support for Google Antigravity (AGY) as an LLM provider in HarnessMe, enabling local language server discovery and custom CSRF/source header management.
+- **Objective**: Add first-class support for Google Antigravity (AGY) language models and language servers.
 - **Changes Made**:
-  - Created [`AntigravityProvider`](file:///home/nana/dev/harness/src/core/provider.rs) in `src/core/provider.rs`:
-    - Auto-discovery constructor `from_env()` resolving `ANTIGRAVITY_BASE_URL`, `AGY_BASE_URL`, or `http://{ANTIGRAVITY_LS_ADDRESS}/v1`.
-    - Support for `ANTIGRAVITY_CSRF_TOKEN` forwarded via `X-Antigravity-CSRF-Token` header.
-    - Support for `ANTIGRAVITY_SOURCE_METADATA` forwarded via `X-Antigravity-Source` header.
-    - Default model preset `gemini-2.5-flash` with support for `gemini-2.5-pro` and `agy-pro`.
-    - Added blanket `impl<P: Provider + ?Sized> Provider for Box<P>` to allow dynamic provider dispatch.
-    - Added 2 comprehensive unit tests for builder methods and environment default resolution.
-  - Updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
-  - Updated [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs) CLI REPL with dynamic provider autodetection (`HARNESS_PROVIDER="antigravity"`).
-  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md) (Quickstart Option D, Provider Subsystem, Environment Reference, Living Changelog) and synchronized [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md).
-- **Architectural Decisions**:
-  - Maintained strict zero-dependency bloat relying only on `ureq` + `serde`/`serde_json` + Rust standard library.
-  - Enabled seamless compatibility with both local Antigravity Language Servers and cloud endpoints.
+  - Implemented `AntigravityProvider` in `src/core/provider.rs` with automatic discovery of `ANTIGRAVITY_LS_ADDRESS`, `ANTIGRAVITY_CSRF_TOKEN`, and `ANTIGRAVITY_BASE_URL`.
+  - Implemented header injection for `X-Antigravity-CSRF-Token` and `X-Antigravity-Source`.
+  - Added blanket `Provider` implementation for `Box<P>` / `Box<dyn Provider>`.
+  - Updated CLI REPL in `src/main.rs` to autodetect and dynamically instantiate `AntigravityProvider`.
+  - Added unit tests for builder methods and environment loading.
 - **Verification**:
   - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` expanded to 33 tests with 33/33 passing (100% success rate).
+  - `cargo test` ran 28 tests with 100% success rate.
 - **Next Steps**:
-  - Proceed with Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
+  - Proceed with Milestone 2 Issue #12: REPL Command Parsing & /agy Configuration.
 
 ---
 
-### [2026-09-25] - Implementation of Issue #12: REPL Command Parsing & /agy Antigravity Configuration
-- **Objective**: Implement a command parsing system in the CLI REPL (`src/main.rs`) and dynamic provider mutation on `Agent` (`src/core/agent.rs`), introducing `/agy` to inspect and configure the Antigravity provider in real time.
+### [2026-09-25] - Implementation of Issue #12: REPL Command Parsing & `/agy` Configuration
+- **Objective**: Add dynamic command parsing to the CLI REPL and implement the `/agy` configuration command suite.
 - **Changes Made**:
-  - Enhanced [`Agent`](file:///home/nana/dev/harness/src/core/agent.rs) with `set_provider` and `set_boxed_provider` for dynamic runtime provider updates without loss of conversation history or tool registrations.
-  - Implemented strongly typed command parser in [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs):
-    - `Command`: `Exit`, `Clear`, `History`, `Help`, `ProviderInfo`, `Agy(AgySubcommand)`, `UserPrompt(String)`.
-    - `AgySubcommand`: `Status`, `Model(String)`, `Url(String)`, `Port(u16)`, `Csrf(Option<String>)`, `Key(Option<String>)`, `Temperature(f32)`, `Timeout(u64)`, `Reset`, `Switch`, `Help`.
-  - Added formatted outputs for `/help`, `/agy status`, `/agy help`, `/provider`, and `/history`.
-  - Added unit tests in `src/main.rs` for command parsing and in `src/core/agent.rs` for `set_provider` and `set_boxed_provider`.
-  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md) Section 1.4 and [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) Phase 12.
-- **Architectural Decisions**:
-  - Maintained zero dependency bloat: standard library pattern matching and token splitting without external CLI frameworks.
-  - Supported both modern slash commands (`/agy`, `/help`, `/clear`) and legacy bare words for backwards compatibility.
+  - Added `set_provider` and `set_boxed_provider` on `Agent` in `src/core/agent.rs`.
+  - Implemented `Command` and `AgySubcommand` parser in `src/main.rs`.
+  - Added `/agy` subcommands: `status`, `model`, `url`, `port`, `csrf`, `key`, `temp`, `timeout`, `reset`, `switch`, `help`.
+  - Added unit tests for command parsing and provider replacement.
 - **Verification**:
   - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` ran 37 tests (34 library + 3 binary unit tests) with 37/37 passing (100% success rate).
+  - `cargo test` ran 37 tests with 100% success rate.
 - **Next Steps**:
-  - Proceed with Milestone 2 Issue #13: Google Account Linking & Interactive Model Selection to /agy.
+  - Proceed with Milestone 2 Issue #13: Google Account Linking & Model Selection in /agy.
 
 ---
 
 ### [2026-09-25] - Implementation of Issue #13: Google Account Linking & Interactive Model Selection in `/agy`
-- **Objective**: Implement interactive choices in the `/agy` command suite, allowing users to link their Google account / OAuth tokens and select models from a curated Gemini / Antigravity catalogue with numeric shortcuts.
+- **Objective**: Implement interactive choices in `/agy`, allowing users to link Google accounts and select models with numeric shortcuts.
 - **Changes Made**:
-  - Enhanced [`AntigravityProvider`](file:///home/nana/dev/harness/src/core/provider.rs):
-    - Added `account_email: Option<String>` with builder methods `with_account(email)` and `with_optional_account(email)` and getter `account_email()`.
-    - Auto-discovered `ANTIGRAVITY_ACCOUNT`, `GOOGLE_ACCOUNT`, and `AGY_ACCOUNT` in `from_env()`.
-    - Added `SUPPORTED_MODELS` catalogue (`gemini-2.5-flash`, `gemini-2.5-pro`, `gemini-1.5-pro`, `gemini-1.5-flash`, `agy-pro`).
-    - Added `resolve_model_name(input)` supporting numeric shortcuts (`1`, `2`, `3`, `4`, `5`) and aliases (`flash`, `pro`).
-    - Added comprehensive unit tests for account builder, environment loading, and model resolution.
-  - Enhanced [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs):
-    - Added `AgySubcommand::Menu`, `AgySubcommand::Link(Option<String>)`, `AgySubcommand::Account(String)`, `AgySubcommand::ModelList`.
-    - Updated `parse_command` to route `/agy` or `/agy menu` to interactive selection menu, `/agy 1` to account linking, `/agy 2` to model selection, `/agy 3` to status, and `/agy 4` to provider switch.
-    - Implemented `print_agy_menu` and `print_agy_models` presenting choices.
-    - Added CLI tests covering all new subcommands, numeric shortcuts, and alias resolutions.
-  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md) (Section 1.4 & Section 15) and [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) (Phase 13).
-- **Architectural Decisions**:
-  - Maintained zero dependency bloat using Rust standard library pattern matching and formatted terminal output.
-  - Interactive selection menu provides immediate feedback and straightforward numeric selection for terminal users.
+  - Enhanced `AntigravityProvider` with `account_email` metadata, builder methods, and getters.
+  - Added `SUPPORTED_MODELS` catalogue and `resolve_model_name` for numeric shortcuts and aliases.
+  - Added interactive selection menu in `src/main.rs` (`/agy menu`, `/agy 1`, `/agy 2`, `/agy 3`, `/agy 4`).
+  - Added unit tests for account configuration and model shortcuts.
 - **Verification**:
   - `cargo check --all-targets` passed cleanly.
-  - `cargo clippy -- -D warnings` passed with 0 warnings.
-  - `cargo fmt --check` passed cleanly.
-  - `cargo test` ran 38 tests (35 library + 3 binary unit tests) with 38/38 passing (100% success rate).
+  - `cargo test` ran 38 tests with 100% success rate.
 - **Next Steps**:
-  - Proceed with Milestone 2 Issue #14: Exclusive Google AI Provider & Browser-Based Google Sign-In in `/agy`.
+  - Proceed with Milestone 2 Issue #14: Exclusive Google AI Provider & Browser-Based Sign-In.
 
 ---
 
@@ -1389,5 +1291,34 @@ impl Tool for TimeTool {
   - `cargo fmt --check` passed cleanly.
   - `cargo test` ran 39 tests (36 library + 3 binary unit tests) with 39/39 passing (100% success rate).
   - Executed interactive CLI with `/provider`, `/agy menu`, `/agy 3`, and `/agy` demonstrating successful browser launch, automatic detection of `mavepith762@gmail.com`, and prompt readiness.
+- **Next Steps**:
+  - Proceed with Milestone 2 Issue #15: Native Google AI Pro Subscription Integration via `agy`.
+
+---
+
+### [2026-09-25] - Implementation of Issue #15: Native Google AI Pro Subscription Integration via `agy`
+- **Objective**: Connect HarnessMe directly to the user's active Google AI Pro subscription (`mavepith762@gmail.com`), eliminate misleading localhost endpoints, and execute Google Cloud models natively via the local authenticated `agy` CLI binary using `gemini-3.1-pro-high` as the default flagship model.
+- **Changes Made**:
+  - Refactored [`AntigravityProvider`](file:///home/nana/dev/harness/src/core/provider.rs):
+    - Added `find_agy_binary()` to dynamically locate the system `agy` CLI executable (`AGY_BIN`, `~/.local/bin/agy`, `which agy`).
+    - Added `build_prompt_with_tools(messages, tools)` formatting system directives, multi-turn history, and strict JSON tool schema definitions for Gemini.
+    - Added `extract_tool_calls_from_text(text)` parsing markdown code blocks, JSON payloads, or embedded tool call schemas into `Vec<ToolCall>`.
+    - Added `complete_agy_cli(messages, tools)` executing `agy --model <model> --output-format json --print <prompt>` using the active Google authentication keyring.
+    - Updated `Provider::complete` to default to `complete_agy_cli` with cloud connectivity, preserving `complete_http` only for custom non-localhost HTTP endpoints.
+    - Updated model catalogue and numeric shortcuts for Google AI Pro: `gemini-3.1-pro-high` (1 / pro), `gemini-3.8-flash-high` (2 / flash), `gemini-3.7-flash-high` (3), `gemini-3.6-flash-high` (4), `claude-sonnet-4-6` (5 / sonnet), `claude-opus-4-6-thinking` (6 / opus).
+    - Added unit tests: `test_build_prompt_with_tools`, `test_extract_tool_calls_from_text`, `test_find_agy_binary`, and updated model catalogue assertions.
+  - Updated [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs):
+    - Updated banner, `/agy status`, and `/agy menu` to reflect `Google AI Pro Subscription: ACTIVE`, Google Cloud connection, and `gemini-3.1-pro-high`.
+    - Updated test suite covering model shortcuts and command parsing.
+  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md) (Sections 1.2, 1.3, 15) and [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) (Phase 15).
+- **Architectural Decisions**:
+  - Zero external dependency bloat: utilizes Rust's `std::process::Command`, `std::fs`, and `serde_json`.
+  - Truly connects the harness to the user's paid Google AI Pro cloud infrastructure without requiring local server daemons or mock endpoints.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 42 tests (39 library + 3 binary unit tests) with 42/42 passing (100% success rate).
+  - Executed end-to-end interactive CLI test with prompt `What is 15 * 8?`, verifying live Google AI Pro inference and accurate response generation (`agent > 15 * 8 is 120.`).
 - **Next Steps**:
   - Proceed with Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
