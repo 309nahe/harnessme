@@ -6,7 +6,9 @@ pub mod tool;
 pub mod types;
 
 pub use agent::{Agent, AgentConfig, AgentError};
-pub use provider::{OpenAiCompatibleProvider, Provider, ProviderError, ProviderResponse};
+pub use provider::{
+    AntigravityProvider, OpenAiCompatibleProvider, Provider, ProviderError, ProviderResponse,
+};
 pub use tool::{Tool, ToolError, ToolRegistry};
 pub use types::{
     FunctionCall, FunctionDefinition, Message, Role, ToolCall, ToolDefinition, ToolResult,

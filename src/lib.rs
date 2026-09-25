@@ -6,7 +6,7 @@ pub mod core;
 pub mod tools;
 
 pub use core::{
-    Agent, AgentConfig, AgentError, FunctionCall, FunctionDefinition, Message,
+    Agent, AgentConfig, AgentError, AntigravityProvider, FunctionCall, FunctionDefinition, Message,
     OpenAiCompatibleProvider, Provider, ProviderError, ProviderResponse, Role, Tool, ToolCall,
     ToolDefinition, ToolError, ToolRegistry, ToolResult,
 };

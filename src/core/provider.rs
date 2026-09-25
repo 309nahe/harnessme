@@ -55,6 +55,16 @@ pub trait Provider: Send + Sync {
     ) -> Result<ProviderResponse, ProviderError>;
 }
 
+impl<P: Provider + ?Sized> Provider for Box<P> {
+    fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ProviderResponse, ProviderError> {
+        (**self).complete(messages, tools)
+    }
+}
+
 /// Request payload sent to OpenAI-compatible `/chat/completions` endpoints.
 #[derive(Debug, Serialize)]
 struct ChatCompletionRequest<'a> {
@@ -233,6 +243,236 @@ impl Provider for OpenAiCompatibleProvider {
         })?;
 
         Self::parse_response_json(&response_body)
+    }
+}
+
+/// Synchronous HTTP client for Google Antigravity (AGY) endpoints and language servers.
+///
+/// Supports local Antigravity Language Server addresses (`ANTIGRAVITY_LS_ADDRESS`),
+/// cloud gateway endpoints (`ANTIGRAVITY_BASE_URL`), bearer token authentication,
+/// and `X-Antigravity-CSRF-Token` / `X-Antigravity-Source` header injection.
+#[derive(Debug, Clone)]
+pub struct AntigravityProvider {
+    api_key: Option<String>,
+    base_url: String,
+    csrf_token: Option<String>,
+    model: String,
+    temperature: f32,
+    timeout_secs: u64,
+    source_metadata: Option<String>,
+}
+
+impl AntigravityProvider {
+    /// Default model preset for Antigravity provider.
+    pub const DEFAULT_MODEL: &'static str = "gemini-2.5-flash";
+    /// Default fallback base URL for local Antigravity Language Server.
+    pub const DEFAULT_BASE_URL: &'static str = "http://127.0.0.1:38035/v1";
+
+    /// Creates a new `AntigravityProvider` with the specified model name.
+    pub fn new(model: impl Into<String>) -> Self {
+        Self {
+            api_key: None,
+            base_url: Self::DEFAULT_BASE_URL.to_string(),
+            csrf_token: None,
+            model: model.into(),
+            temperature: 0.7,
+            timeout_secs: 60,
+            source_metadata: None,
+        }
+    }
+
+    /// Automatically constructs an `AntigravityProvider` discovering configuration from environment variables:
+    /// - Base URL: `ANTIGRAVITY_BASE_URL`, `AGY_BASE_URL`, or `http://{ANTIGRAVITY_LS_ADDRESS}/v1`
+    /// - API Key: `ANTIGRAVITY_API_KEY` or `AGY_API_KEY`
+    /// - CSRF Token: `ANTIGRAVITY_CSRF_TOKEN`
+    /// - Model: `ANTIGRAVITY_MODEL`, `HARNESS_MODEL`, or `DEFAULT_MODEL` (`gemini-2.5-flash`)
+    /// - Source Metadata: `ANTIGRAVITY_SOURCE_METADATA`
+    pub fn from_env() -> Self {
+        let api_key = std::env::var("ANTIGRAVITY_API_KEY")
+            .or_else(|_| std::env::var("AGY_API_KEY"))
+            .ok();
+
+        let base_url = std::env::var("ANTIGRAVITY_BASE_URL")
+            .or_else(|_| std::env::var("AGY_BASE_URL"))
+            .or_else(|_| {
+                std::env::var("ANTIGRAVITY_LS_ADDRESS").map(|addr| {
+                    if addr.starts_with("http://") || addr.starts_with("https://") {
+                        format!("{}/v1", addr.trim_end_matches('/'))
+                    } else {
+                        format!("http://{}/v1", addr.trim_end_matches('/'))
+                    }
+                })
+            })
+            .unwrap_or_else(|_| Self::DEFAULT_BASE_URL.to_string());
+
+        let csrf_token = std::env::var("ANTIGRAVITY_CSRF_TOKEN").ok();
+        let source_metadata = std::env::var("ANTIGRAVITY_SOURCE_METADATA").ok();
+
+        let model = std::env::var("ANTIGRAVITY_MODEL")
+            .or_else(|_| std::env::var("HARNESS_MODEL"))
+            .unwrap_or_else(|_| Self::DEFAULT_MODEL.to_string());
+
+        let temperature = std::env::var("HARNESS_TEMPERATURE")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(0.7);
+
+        Self {
+            api_key,
+            base_url,
+            csrf_token,
+            model,
+            temperature,
+            timeout_secs: 60,
+            source_metadata,
+        }
+    }
+
+    /// Sets the API key for bearer authentication.
+    pub fn with_api_key(mut self, api_key: impl Into<String>) -> Self {
+        self.api_key = Some(api_key.into());
+        self
+    }
+
+    /// Sets or clears the optional API key.
+    pub fn with_optional_api_key(mut self, api_key: Option<String>) -> Self {
+        self.api_key = api_key;
+        self
+    }
+
+    /// Sets the endpoint base URL.
+    pub fn with_base_url(mut self, base_url: impl Into<String>) -> Self {
+        self.base_url = base_url.into();
+        self
+    }
+
+    /// Sets the CSRF token for Antigravity Language Server requests.
+    pub fn with_csrf_token(mut self, csrf_token: impl Into<String>) -> Self {
+        self.csrf_token = Some(csrf_token.into());
+        self
+    }
+
+    /// Sets or clears the optional CSRF token.
+    pub fn with_optional_csrf_token(mut self, csrf_token: Option<String>) -> Self {
+        self.csrf_token = csrf_token;
+        self
+    }
+
+    /// Sets the model name.
+    pub fn with_model(mut self, model: impl Into<String>) -> Self {
+        self.model = model.into();
+        self
+    }
+
+    /// Sets the sampling temperature.
+    pub fn with_temperature(mut self, temperature: f32) -> Self {
+        self.temperature = temperature;
+        self
+    }
+
+    /// Sets the HTTP request timeout in seconds.
+    pub fn with_timeout(mut self, timeout_secs: u64) -> Self {
+        self.timeout_secs = timeout_secs;
+        self
+    }
+
+    /// Sets optional source tracking metadata.
+    pub fn with_source_metadata(mut self, source: impl Into<String>) -> Self {
+        self.source_metadata = Some(source.into());
+        self
+    }
+
+    /// Returns the API key, if configured.
+    pub fn api_key(&self) -> Option<&str> {
+        self.api_key.as_deref()
+    }
+
+    /// Returns the base URL.
+    pub fn base_url(&self) -> &str {
+        &self.base_url
+    }
+
+    /// Returns the CSRF token, if configured.
+    pub fn csrf_token(&self) -> Option<&str> {
+        self.csrf_token.as_deref()
+    }
+
+    /// Returns the model identifier.
+    pub fn model(&self) -> &str {
+        &self.model
+    }
+
+    /// Returns the temperature.
+    pub fn temperature(&self) -> f32 {
+        self.temperature
+    }
+
+    /// Returns the timeout in seconds.
+    pub fn timeout_secs(&self) -> u64 {
+        self.timeout_secs
+    }
+
+    /// Returns the source metadata, if configured.
+    pub fn source_metadata(&self) -> Option<&str> {
+        self.source_metadata.as_deref()
+    }
+}
+
+impl Provider for AntigravityProvider {
+    fn complete(
+        &self,
+        messages: &[Message],
+        tools: &[ToolDefinition],
+    ) -> Result<ProviderResponse, ProviderError> {
+        let endpoint = format!("{}/chat/completions", self.base_url.trim_end_matches('/'));
+
+        let tools_payload = if tools.is_empty() { None } else { Some(tools) };
+
+        let request_payload = ChatCompletionRequest {
+            model: &self.model,
+            messages,
+            temperature: self.temperature,
+            tools: tools_payload,
+        };
+
+        let agent = ureq::AgentBuilder::new()
+            .timeout(Duration::from_secs(self.timeout_secs))
+            .build();
+
+        let mut request = agent
+            .post(&endpoint)
+            .set("Content-Type", "application/json");
+
+        if let Some(ref api_key) = self.api_key {
+            request = request.set("Authorization", &format!("Bearer {api_key}"));
+        }
+
+        if let Some(ref csrf_token) = self.csrf_token {
+            request = request.set("X-Antigravity-CSRF-Token", csrf_token);
+        }
+
+        if let Some(ref source) = self.source_metadata {
+            request = request.set("X-Antigravity-Source", source);
+        }
+
+        let response = match request.send_json(&request_payload) {
+            Ok(resp) => resp,
+            Err(ureq::Error::Status(status, resp)) => {
+                let message = resp
+                    .into_string()
+                    .unwrap_or_else(|_| format!("HTTP {status} with unreadable error payload"));
+                return Err(ProviderError::ApiError { status, message });
+            }
+            Err(ureq::Error::Transport(transport_err)) => {
+                return Err(ProviderError::HttpError(transport_err.to_string()));
+            }
+        };
+
+        let response_body = response.into_string().map_err(|err| {
+            ProviderError::HttpError(format!("Failed to read response body: {err}"))
+        })?;
+
+        OpenAiCompatibleProvider::parse_response_json(&response_body)
     }
 }
 
@@ -497,5 +737,35 @@ mod tests {
             }
             _ => panic!("Expected empty Text response"),
         }
+    }
+
+    #[test]
+    fn test_antigravity_provider_builder_and_defaults() {
+        let provider = AntigravityProvider::new("gemini-2.5-pro")
+            .with_base_url("http://127.0.0.1:38035/v1")
+            .with_api_key("agy_secret_token")
+            .with_csrf_token("csrf_123")
+            .with_temperature(0.4)
+            .with_timeout(30)
+            .with_source_metadata("{\"agent\":\"antigravity\"}");
+
+        assert_eq!(provider.model(), "gemini-2.5-pro");
+        assert_eq!(provider.base_url(), "http://127.0.0.1:38035/v1");
+        assert_eq!(provider.api_key(), Some("agy_secret_token"));
+        assert_eq!(provider.csrf_token(), Some("csrf_123"));
+        assert!((provider.temperature() - 0.4).abs() < f32::EPSILON);
+        assert_eq!(provider.timeout_secs(), 30);
+        assert_eq!(
+            provider.source_metadata(),
+            Some("{\"agent\":\"antigravity\"}")
+        );
+    }
+
+    #[test]
+    fn test_antigravity_provider_from_env_defaults() {
+        let provider = AntigravityProvider::from_env();
+        assert_eq!(provider.timeout_secs(), 60);
+        assert!(!provider.base_url().is_empty());
+        assert!(!provider.model().is_empty());
     }
 }

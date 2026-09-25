@@ -146,6 +146,14 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [ ] Add `/tools` and `/help` REPL diagnostic commands.
 - [ ] Register `ReadFileTool` and `WriteFileTool` in REPL workspace.
 
+### Phase 11 (MS2 - Issue #11): Google Antigravity (AGY) Provider Support
+- [x] Implement `AntigravityProvider` in `src/core/provider.rs` with automatic environment discovery (`ANTIGRAVITY_BASE_URL`, `ANTIGRAVITY_LS_ADDRESS`, `ANTIGRAVITY_API_KEY`, `ANTIGRAVITY_CSRF_TOKEN`).
+- [x] Support header injection (`X-Antigravity-CSRF-Token`, `X-Antigravity-Source`).
+- [x] Implement blanket `Provider` trait for `Box<dyn Provider>` / `Box<P>`.
+- [x] Integrate Antigravity provider autodetection and dynamic loading in CLI REPL (`src/main.rs`).
+- [x] Add unit tests for builder methods, environment defaults, and provider dispatch.
+- [x] Re-export `AntigravityProvider` in `src/core/mod.rs` and `src/lib.rs`.
+
 ---
 
 ## 6. Potential Future Enhancements (Post-Milestone 2)

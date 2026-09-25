@@ -7,7 +7,8 @@ use std::env;
 use std::io::{self, Write};
 
 use harnessme::{
-    Agent, AgentConfig, CalculatorTool, EchoTool, OpenAiCompatibleProvider, ToolRegistry,
+    Agent, AgentConfig, AntigravityProvider, CalculatorTool, EchoTool, OpenAiCompatibleProvider,
+    Provider, ToolRegistry,
 };
 
 const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
@@ -19,9 +20,55 @@ const DEFAULT_SYSTEM_PROMPT: &str =
 When requested to perform calculations or operations, invoke the appropriate tools accurately.";
 
 fn main() {
-    let api_key = env::var("OPENAI_API_KEY").ok();
-    let base_url = env::var("OPENAI_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
-    let model = env::var("HARNESS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+    let provider_name = env::var("HARNESS_PROVIDER").unwrap_or_else(|_| {
+        if env::var("ANTIGRAVITY_LS_ADDRESS").is_ok()
+            || env::var("ANTIGRAVITY_BASE_URL").is_ok()
+            || env::var("ANTIGRAVITY_API_KEY").is_ok()
+            || env::var("AGY_API_KEY").is_ok()
+        {
+            "antigravity".to_string()
+        } else {
+            "openai".to_string()
+        }
+    });
+
+    let is_antigravity =
+        provider_name.to_lowercase() == "antigravity" || provider_name.to_lowercase() == "agy";
+
+    let (provider, model_display, url_display, key_status): (
+        Box<dyn Provider>,
+        String,
+        String,
+        &str,
+    ) = if is_antigravity {
+        let agy = AntigravityProvider::from_env();
+        let model = agy.model().to_string();
+        let url = agy.base_url().to_string();
+        let key_status = if agy.api_key().is_some() {
+            "Configured (hidden)"
+        } else {
+            "None / Local Auth"
+        };
+        (Box::new(agy), model, url, key_status)
+    } else {
+        let api_key = env::var("OPENAI_API_KEY").ok();
+        let base_url = env::var("OPENAI_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
+        let model = env::var("HARNESS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
+        let temperature = env::var("HARNESS_TEMPERATURE")
+            .ok()
+            .and_then(|v| v.parse::<f32>().ok())
+            .unwrap_or(DEFAULT_TEMPERATURE);
+        let key_status = if api_key.is_some() {
+            "Configured (hidden)"
+        } else {
+            "None (local endpoint mode)"
+        };
+        let openai = OpenAiCompatibleProvider::new(&model, api_key)
+            .with_base_url(&base_url)
+            .with_temperature(temperature);
+        (Box::new(openai), model, base_url, key_status)
+    };
+
     let system_prompt =
         env::var("HARNESS_SYSTEM_PROMPT").unwrap_or_else(|_| DEFAULT_SYSTEM_PROMPT.to_string());
     let max_iterations = env::var("HARNESS_MAX_STEPS")
@@ -36,21 +83,25 @@ fn main() {
     println!("====================================================");
     println!("             HarnessMe Agent Interactive CLI         ");
     println!("====================================================");
-    println!(" Model        : {model}");
-    println!(" Base URL     : {base_url}");
     println!(
-        " API Key      : {}",
-        if api_key.is_some() {
-            "Configured (hidden)"
+        " Provider     : {}",
+        if is_antigravity {
+            "Antigravity (AGY)"
         } else {
-            "None (local endpoint mode)"
+            "OpenAI-Compatible"
         }
     );
+    println!(" Model        : {model_display}");
+    println!(" Base URL     : {url_display}");
+    println!(" Auth Key     : {key_status}");
     println!(" Max Steps    : {max_iterations}");
     println!(" Temperature  : {temperature}");
     println!("----------------------------------------------------");
 
-    if api_key.is_none() && base_url.starts_with("https://api.openai.com") {
+    if !is_antigravity
+        && key_status.contains("None")
+        && url_display.starts_with("https://api.openai.com")
+    {
         eprintln!(
             "Notice: OPENAI_API_KEY is not set. If connecting to OpenAI, please export OPENAI_API_KEY."
         );
@@ -74,11 +125,6 @@ fn main() {
     );
     println!(" Commands: 'exit'/'quit' to exit, 'clear' to reset history, 'history' to inspect.");
     println!("====================================================\n");
-
-    // Initialize provider
-    let provider = OpenAiCompatibleProvider::new(&model, api_key)
-        .with_base_url(&base_url)
-        .with_temperature(temperature);
 
     // Initialize agent
     let config = AgentConfig::new()

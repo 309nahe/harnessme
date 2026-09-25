@@ -115,15 +115,38 @@ export HARNESS_MODEL="llama-3.1-70b-versatile"
 cargo run
 ```
 
+#### Option D: Running with Google Antigravity (AGY)
+HarnessMe includes first-class support for Google Antigravity endpoints and language servers:
+
+1. **Automatic Local Language Server Detection**: If running inside an Antigravity environment, `ANTIGRAVITY_LS_ADDRESS` and `ANTIGRAVITY_CSRF_TOKEN` are detected automatically:
+   ```bash
+   cargo run
+   ```
+2. **Explicit Antigravity Configuration**:
+   ```bash
+   export HARNESS_PROVIDER="antigravity"
+   export ANTIGRAVITY_BASE_URL="http://127.0.0.1:38035/v1"
+   export ANTIGRAVITY_MODEL="gemini-2.5-flash" # or gemini-2.5-pro, agy-pro
+   export ANTIGRAVITY_CSRF_TOKEN="your-csrf-token" # if required by local language server
+   export ANTIGRAVITY_API_KEY="your-api-key" # optional if connecting to cloud gateway
+   cargo run
+   ```
+
 ---
 
 ### 1.3 Environment Variables Reference
 
 | Variable | Type | Default | Description |
 |---|---|---|---|
-| `OPENAI_API_KEY` | String | `None` | Bearer token for endpoint authentication. Required for OpenAI, optional for local Ollama/vLLM endpoints. |
-| `OPENAI_BASE_URL` | URL | `https://api.openai.com/v1` | Base endpoint URL for the chat completions API. |
-| `HARNESS_MODEL` | String | `gpt-4o-mini` | Target model identifier passed to `/chat/completions`. |
+| `HARNESS_PROVIDER` | String | Auto-detected | LLM provider backend: `"openai"` or `"antigravity"` (or `"agy"`). Auto-detects Antigravity if local AGY environment is present. |
+| `OPENAI_API_KEY` | String | `None` | Bearer token for OpenAI endpoint authentication. |
+| `OPENAI_BASE_URL` | URL | `https://api.openai.com/v1` | Base endpoint URL for OpenAI-compatible chat completions API. |
+| `ANTIGRAVITY_BASE_URL` | URL | `http://127.0.0.1:38035/v1` | Base endpoint URL for Antigravity (AGY) chat completions API. |
+| `ANTIGRAVITY_API_KEY` / `AGY_API_KEY` | String | `None` | Optional bearer token for Antigravity cloud gateway or authenticated instances. |
+| `ANTIGRAVITY_LS_ADDRESS` | Host:Port | `None` | Local Antigravity Language Server address (automatically sets base URL to `http://{LS_ADDRESS}/v1`). |
+| `ANTIGRAVITY_CSRF_TOKEN` | String | `None` | CSRF token passed via `X-Antigravity-CSRF-Token` header for secure language server communication. |
+| `ANTIGRAVITY_MODEL` | String | `gemini-2.5-flash` | Model identifier for Antigravity provider (`gemini-2.5-flash`, `gemini-2.5-pro`, `agy-pro`). |
+| `HARNESS_MODEL` | String | `gpt-4o-mini` / `gemini-2.5-flash` | Target model identifier fallback passed to `/chat/completions`. |
 | `HARNESS_SYSTEM_PROMPT` | String | *"You are a helpful and concise AI assistant..."* | Custom system directives defining the agent's behavior and tone. |
 | `HARNESS_MAX_STEPS` | Integer | `10` | Maximum iterative tool execution turns before halting (runaway loop guardrail). |
 | `HARNESS_TEMPERATURE` | Float | `0.7` | Model sampling temperature (e.g. `0.0` for deterministic logic, `0.7` for general tasks). |
@@ -817,6 +840,30 @@ Implements the `Provider` trait for standard OpenAI chat completion endpoints (`
 - vLLM
 - Groq / Mistral / DeepSeek OpenAI-compatible gateways
 
+### `AntigravityProvider`
+First-class provider implementation designed for Google Antigravity (AGY) endpoints, cloud gateways, and local Antigravity Language Servers.
+
+#### Key Features
+- **Zero Configuration Discovery**: `AntigravityProvider::from_env()` automatically discovers local language server addresses from `ANTIGRAVITY_LS_ADDRESS` and maps them to `http://{address}/v1`.
+- **Security & CSRF Tokens**: Automatically captures and forwards `ANTIGRAVITY_CSRF_TOKEN` in the `X-Antigravity-CSRF-Token` header.
+- **Source Metadata**: Forwards `X-Antigravity-Source` for provenance and telemetry tracking.
+- **Model Presets**: Pre-configured defaults for `gemini-2.5-flash`, `gemini-2.5-pro`, and `agy-pro`.
+
+#### Rust Usage Example
+```rust
+use harnessme::core::provider::AntigravityProvider;
+use harnessme::{Agent, AgentConfig, ToolRegistry};
+
+// 1. Auto-discover from local environment or environment variables
+let provider = AntigravityProvider::from_env();
+
+// 2. Or configure manually with builder methods
+let custom_provider = AntigravityProvider::new("gemini-2.5-pro")
+    .with_base_url("http://127.0.0.1:38035/v1")
+    .with_csrf_token("session_token_123")
+    .with_temperature(0.2);
+```
+
 ---
 
 ## 9. Agent Execution Engine
@@ -892,9 +939,15 @@ impl Agent {
 
 | Environment Variable | Description | Default |
 |---|---|---|
-| `OPENAI_API_KEY` | API Key for provider authentication | `None` (required for OpenAI) |
-| `OPENAI_BASE_URL` | Base endpoint URL | `https://api.openai.com/v1` |
-| `HARNESS_MODEL` | Target model name | `gpt-4o-mini` |
+| `HARNESS_PROVIDER` | LLM provider backend (`"openai"` or `"antigravity"` / `"agy"`) | Auto-detected |
+| `OPENAI_API_KEY` | API Key for OpenAI provider authentication | `None` (required for OpenAI cloud) |
+| `OPENAI_BASE_URL` | Base endpoint URL for OpenAI-compatible completions | `https://api.openai.com/v1` |
+| `ANTIGRAVITY_BASE_URL` | Base endpoint URL for Antigravity (AGY) completions | `http://127.0.0.1:38035/v1` |
+| `ANTIGRAVITY_API_KEY` / `AGY_API_KEY` | Optional bearer token for Antigravity gateway | `None` |
+| `ANTIGRAVITY_LS_ADDRESS` | Address of local Antigravity Language Server | `None` |
+| `ANTIGRAVITY_CSRF_TOKEN` | CSRF token for secure Antigravity Language Server RPC | `None` |
+| `ANTIGRAVITY_MODEL` | Target model for Antigravity provider | `gemini-2.5-flash` |
+| `HARNESS_MODEL` | Universal fallback model identifier | `gpt-4o-mini` / `gemini-2.5-flash` |
 | `HARNESS_MAX_STEPS` | Maximum tool execution loop iterations | `10` |
 | `HARNESS_TEMPERATURE`| Sampling temperature | `0.7` |
 
@@ -979,7 +1032,6 @@ impl Tool for TimeTool {
   - Key rationale and trade-offs.
 - **Verification**:
   - Tests executed and outcomes.
-- **Next Steps**:
   - Follow-up actions for the next agent/developer.
 ```
 
@@ -1243,3 +1295,29 @@ impl Tool for TimeTool {
   - Verified all Markdown links, table formatting, code block syntax, and headers.
 - **Next Steps**:
   - Proceed with implementing Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
+
+---
+
+### [2026-09-25] - Implementation of Issue #11: Google Antigravity (AGY) Provider Support
+- **Objective**: Implement first-class support for Google Antigravity (AGY) as an LLM provider in HarnessMe, enabling local language server discovery and custom CSRF/source header management.
+- **Changes Made**:
+  - Created [`AntigravityProvider`](file:///home/nana/dev/harness/src/core/provider.rs) in `src/core/provider.rs`:
+    - Auto-discovery constructor `from_env()` resolving `ANTIGRAVITY_BASE_URL`, `AGY_BASE_URL`, or `http://{ANTIGRAVITY_LS_ADDRESS}/v1`.
+    - Support for `ANTIGRAVITY_CSRF_TOKEN` forwarded via `X-Antigravity-CSRF-Token` header.
+    - Support for `ANTIGRAVITY_SOURCE_METADATA` forwarded via `X-Antigravity-Source` header.
+    - Default model preset `gemini-2.5-flash` with support for `gemini-2.5-pro` and `agy-pro`.
+    - Added blanket `impl<P: Provider + ?Sized> Provider for Box<P>` to allow dynamic provider dispatch.
+    - Added 2 comprehensive unit tests for builder methods and environment default resolution.
+  - Updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
+  - Updated [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs) CLI REPL with dynamic provider autodetection (`HARNESS_PROVIDER="antigravity"`).
+  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md) (Quickstart Option D, Provider Subsystem, Environment Reference, Living Changelog) and synchronized [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md).
+- **Architectural Decisions**:
+  - Maintained strict zero-dependency bloat relying only on `ureq` + `serde`/`serde_json` + Rust standard library.
+  - Enabled seamless compatibility with both local Antigravity Language Servers and cloud endpoints.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` expanded to 33 tests with 33/33 passing (100% success rate).
+- **Next Steps**:
+  - Proceed with Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
