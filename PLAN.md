@@ -89,10 +89,10 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Verify argument parsing and error propagation within tool executions.
 
 ### Phase 3: Provider Abstraction & OpenAI-Compatible Client
-- [ ] Define the `Provider` trait (input: list of messages + tool definitions; output: `ProviderResponse`).
-- [ ] Implement a minimal OpenAI-compatible HTTP client using `ureq` (or minimal async).
-- [ ] Handle completion payload formatting, header authorization, and error code parsing.
-- [ ] Add integration/mock tests for provider responses (both plain text response and tool-call response).
+- [x] Define the `Provider` trait (input: list of messages + tool definitions; output: `ProviderResponse`).
+- [x] Implement a minimal OpenAI-compatible HTTP client using `ureq` (or minimal async).
+- [x] Handle completion payload formatting, header authorization, and error code parsing.
+- [x] Add integration/mock tests for provider responses (both plain text response and tool-call response).
 
 ### Phase 4: The Agent Execution Loop
 - [ ] Implement `Agent` state and memory (message history list).
