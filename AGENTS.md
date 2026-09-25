@@ -12,6 +12,7 @@
 4. [Component Walkthrough](#4-component-walkthrough)
 5. [Implementation Roadmap Sync (`PLAN.md`)](#5-implementation-roadmap-sync-planmd)
 6. [Operational Command Reference](#6-operational-command-reference)
+7. [GitHub Operations via MCP Protocol (Mandatory)](#7-github-operations-via-mcp-protocol-mandatory)
 
 ---
 
@@ -50,6 +51,14 @@ All AI agents operating on this repository must strictly adhere to the following
 - Every task, feature, or bugfix must be documented in:
   1. [DOCUMENTATION.md](file:///home/nana/dev/harness/DOCUMENTATION.md) (Update relevant technical sections and append to Section 13: Living Changelog).
   2. [PLAN.md](file:///home/nana/dev/harness/PLAN.md) (Check off completed milestones).
+
+### Rule 5: Exclusively Use MCP for GitHub Operations (Zero CLI `git`/`gh`)
+- **NEVER** use CLI commands like `git push`, `git commit`, `git add`, `gh issue`, or `gh auth` for remote operations.
+- **ALWAYS and ONLY** use `github-mcp-server` tools via `call_mcp_tool` for all remote repository interactions:
+  - **Pushing / Committing Files**: Use `push_files` or `create_or_update_file` (with blob SHA obtained via `get_file_contents`).
+  - **Inspecting Remote State**: Use `get_file_contents`, `list_branches`, `list_commits`, `get_commit`.
+  - **Issues & Tracking**: Use `issue_write`, `add_issue_comment`, `list_issues`, `issue_read`.
+- Local shell execution is strictly reserved for local Rust builds and testing (`cargo check`, `cargo test`, `cargo clippy`, `cargo fmt`).
 
 ---
 
@@ -112,10 +121,14 @@ Defines the message envelope and tool structures (`Role`, `Message`, `ToolCall`,
 
 ## 6. Operational Command Reference
 
+> [!IMPORTANT]
+> **Local Shell vs. GitHub Operations**: Terminal commands (`run_command`) are permitted **ONLY** for local Rust compilation, linting, formatting, and test execution. **NEVER** run `git push`, `git commit`, `git add`, or `gh` commands via terminal.
+
 ### Build & Check
 ```bash
-cargo check
-cargo build
+cargo check --all-targets
+cargo clippy -- -D warnings
+cargo fmt --check
 ```
 
 ### Run Tests
@@ -127,3 +140,21 @@ cargo test
 ```bash
 OPENAI_API_KEY="your-api-key" cargo run
 ```
+
+---
+
+## 7. GitHub Operations via MCP Protocol (Mandatory)
+
+All remote GitHub operations (pushing code, updating files, managing branches, commenting on issues, closing issues) **MUST be performed exclusively through the `github-mcp-server` MCP tools** via `call_mcp_tool`.
+
+### MCP Tool Usage Guide
+
+| Task | MCP Tool (`ServerName: "github-mcp-server"`) | Parameters / Strategy |
+|---|---|---|
+| **Push multiple files / Commit** | `push_files` | `owner: "309nahe"`, `repo: "harnessme"`, `branch: "dev"`, `message: "feat: ..."` , `files: [{ path, content }]` |
+| **Create or update single file** | `create_or_update_file` | Retrieve current blob SHA with `get_file_contents` first, then pass `sha`, `path`, `content`, `branch: "dev"`, `message: "..."` |
+| **Read remote file content & SHA** | `get_file_contents` | `owner: "309nahe"`, `repo: "harnessme"`, `path: "...", ref: "dev"` |
+| **List remote branches** | `list_branches` | `owner: "309nahe"`, `repo: "harnessme"` |
+| **List & inspect issues** | `list_issues` / `issue_read` | `owner: "309nahe"`, `repo: "harnessme"`, `state: "open"` |
+| **Add issue comments** | `add_issue_comment` | `owner: "309nahe"`, `repo: "harnessme"`, `issue_number: N`, `body: "..."` |
+| **Update / Close issues** | `issue_write` | `owner: "309nahe"`, `repo: "harnessme"`, `method: "update"`, `issue_number: N`, `state: "closed"`, `state_reason: "completed"` |
