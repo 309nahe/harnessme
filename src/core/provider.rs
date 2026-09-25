@@ -276,16 +276,44 @@ impl AntigravityProvider {
             "Gemini 3.1 Pro (High) - Google AI Pro Flagship (Deep reasoning & code)",
         ),
         (
+            "gemini-3.1-pro-low",
+            "Gemini 3.1 Pro (Low) - Lightweight reasoning & fast completions",
+        ),
+        (
             "gemini-3.8-flash-high",
             "Gemini 3.8 Flash (High) - Fast, capable multimodal model",
+        ),
+        (
+            "gemini-3.8-flash-medium",
+            "Gemini 3.8 Flash (Medium) - Balanced speed & reasoning",
+        ),
+        (
+            "gemini-3.8-flash-low",
+            "Gemini 3.8 Flash (Low) - Fast, low-latency completions",
         ),
         (
             "gemini-3.7-flash-high",
             "Gemini 3.7 Flash (High) - Extended reasoning & low latency",
         ),
         (
+            "gemini-3.7-flash-medium",
+            "Gemini 3.7 Flash (Medium) - Balanced reasoning & latency",
+        ),
+        (
+            "gemini-3.7-flash-low",
+            "Gemini 3.7 Flash (Low) - Quick responses",
+        ),
+        (
             "gemini-3.6-flash-high",
             "Gemini 3.6 Flash (High) - Ultra-low latency conversational model",
+        ),
+        (
+            "gemini-3.6-flash-medium",
+            "Gemini 3.6 Flash (Medium) - Fast conversational model",
+        ),
+        (
+            "gemini-3.6-flash-low",
+            "Gemini 3.6 Flash (Low) - Instant conversational responses",
         ),
         (
             "claude-sonnet-4-6",
@@ -295,6 +323,10 @@ impl AntigravityProvider {
             "claude-opus-4-6-thinking",
             "Claude Opus 4.6 (Thinking - Google AI Pro Gateway)",
         ),
+        (
+            "gpt-oss-120b-medium",
+            "GPT-OSS 120B (Medium - Open-source weight gateway)",
+        ),
     ];
 
     /// Resolves a numeric shortcut index or alias into a canonical model name if matched.
@@ -302,11 +334,19 @@ impl AntigravityProvider {
         let trimmed = input.trim();
         match trimmed {
             "1" | "pro" => "gemini-3.1-pro-high".to_string(),
-            "2" | "flash" => "gemini-3.8-flash-high".to_string(),
-            "3" => "gemini-3.7-flash-high".to_string(),
-            "4" => "gemini-3.6-flash-high".to_string(),
-            "5" | "sonnet" => "claude-sonnet-4-6".to_string(),
-            "6" | "opus" => "claude-opus-4-6-thinking".to_string(),
+            "2" => "gemini-3.1-pro-low".to_string(),
+            "3" | "flash" => "gemini-3.8-flash-high".to_string(),
+            "4" => "gemini-3.8-flash-medium".to_string(),
+            "5" => "gemini-3.8-flash-low".to_string(),
+            "6" => "gemini-3.7-flash-high".to_string(),
+            "7" => "gemini-3.7-flash-medium".to_string(),
+            "8" => "gemini-3.7-flash-low".to_string(),
+            "9" => "gemini-3.6-flash-high".to_string(),
+            "10" => "gemini-3.6-flash-medium".to_string(),
+            "11" => "gemini-3.6-flash-low".to_string(),
+            "12" | "sonnet" => "claude-sonnet-4-6".to_string(),
+            "13" | "opus" => "claude-opus-4-6-thinking".to_string(),
+            "14" => "gpt-oss-120b-medium".to_string(),
             other => other.to_string(),
         }
     }
@@ -545,6 +585,48 @@ impl AntigravityProvider {
             }
         }
         None
+    }
+
+    /// Fetches currently available models from the system's `agy` CLI or falls back to `SUPPORTED_MODELS`.
+    pub fn fetch_available_models() -> Vec<(String, String)> {
+        if let Some(agy_bin) = Self::find_agy_binary() {
+            if let Ok(output) = std::process::Command::new(agy_bin).arg("models").output() {
+                if output.status.success() {
+                    let stdout = String::from_utf8_lossy(&output.stdout);
+                    let mut list = Vec::new();
+                    for line in stdout.lines() {
+                        let trimmed = line.trim();
+                        if trimmed.is_empty()
+                            || trimmed.starts_with('⠋')
+                            || trimmed.starts_with('⠙')
+                            || trimmed.starts_with('⠹')
+                            || trimmed.starts_with('⠸')
+                            || trimmed.starts_with('⠼')
+                            || trimmed.starts_with('⠴')
+                            || trimmed.starts_with('⠦')
+                            || trimmed.starts_with('⠧')
+                            || trimmed.starts_with('⠇')
+                            || trimmed.starts_with('⠏')
+                        {
+                            continue;
+                        }
+                        let mut parts = trimmed.split_whitespace();
+                        if let Some(model_name) = parts.next() {
+                            let description = parts.collect::<Vec<_>>().join(" ");
+                            list.push((model_name.to_string(), description));
+                        }
+                    }
+                    if !list.is_empty() {
+                        return list;
+                    }
+                }
+            }
+        }
+
+        Self::SUPPORTED_MODELS
+            .iter()
+            .map(|(m, d)| (m.to_string(), d.to_string()))
+            .collect()
     }
 
     /// Formats the conversation history and available tools into a prompt for `agy`.
@@ -1098,6 +1180,10 @@ mod tests {
         );
         assert_eq!(
             AntigravityProvider::resolve_model_name("2"),
+            "gemini-3.1-pro-low"
+        );
+        assert_eq!(
+            AntigravityProvider::resolve_model_name("3"),
             "gemini-3.8-flash-high"
         );
         assert_eq!(
@@ -1105,15 +1191,15 @@ mod tests {
             "gemini-3.8-flash-high"
         );
         assert_eq!(
-            AntigravityProvider::resolve_model_name("3"),
+            AntigravityProvider::resolve_model_name("6"),
             "gemini-3.7-flash-high"
         );
         assert_eq!(
-            AntigravityProvider::resolve_model_name("4"),
+            AntigravityProvider::resolve_model_name("9"),
             "gemini-3.6-flash-high"
         );
         assert_eq!(
-            AntigravityProvider::resolve_model_name("5"),
+            AntigravityProvider::resolve_model_name("12"),
             "claude-sonnet-4-6"
         );
         assert_eq!(
@@ -1121,7 +1207,7 @@ mod tests {
             "claude-sonnet-4-6"
         );
         assert_eq!(
-            AntigravityProvider::resolve_model_name("6"),
+            AntigravityProvider::resolve_model_name("13"),
             "claude-opus-4-6-thinking"
         );
         assert_eq!(
@@ -1129,10 +1215,17 @@ mod tests {
             "claude-opus-4-6-thinking"
         );
         assert_eq!(
+            AntigravityProvider::resolve_model_name("14"),
+            "gpt-oss-120b-medium"
+        );
+        assert_eq!(
             AntigravityProvider::resolve_model_name("custom-gemini-preview"),
             "custom-gemini-preview"
         );
-        assert_eq!(AntigravityProvider::SUPPORTED_MODELS.len(), 6);
+        assert_eq!(AntigravityProvider::SUPPORTED_MODELS.len(), 14);
+
+        let available = AntigravityProvider::fetch_available_models();
+        assert!(!available.is_empty());
     }
 
     #[test]
