@@ -97,7 +97,7 @@ The sole objective of Milestone 1 is to build a functional, reliable end-to-end 
 
 ---
 
-## 3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)
+### 3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)
 
 #### The Idea
 Milestone 1 must compile in under 5 seconds with zero dependency bloat. We avoid large async runtimes (Tokio/Actix) and heavy utility crates. The harness relies exclusively on the Rust standard library plus two essential crates: one for JSON serialization and one for HTTP requests.
@@ -123,7 +123,7 @@ ureq = { version = "2.10", features = ["json"] }
 
 ---
 
-## 3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)
+### 3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)
 
 #### The Idea
 We need a unified intermediate representation (IR) that models all conversational turns. We match the OpenAI function-calling standard because it is the de-facto protocol implemented by OpenAI, Ollama, vLLM, Groq, Mistral, and LocalAI.
@@ -155,7 +155,7 @@ We need a unified intermediate representation (IR) that models all conversationa
 
 ---
 
-## 3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)
+### 3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)
 
 #### The Idea
 The agent engine must not be tightly coupled to any specific tool. Any capability (calculator, file reader, web fetcher) must implement a common trait. A registry manages registration, provides schema definitions to the provider, and handles dynamic dispatch.
@@ -194,7 +194,7 @@ The agent engine must not be tightly coupled to any specific tool. Any capabilit
 
 ---
 
-## 3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)
+### 3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)
 
 #### The Idea
 Decouple the agent loop from the LLM network layer. The provider accepts the current history of messages and available tool definitions, makes an HTTP POST request to `/v1/chat/completions`, and returns either final text or requested tool calls.
@@ -228,7 +228,7 @@ Decouple the agent loop from the LLM network layer. The provider accepts the cur
            &self,
            messages: &[Message],
            tools: &[ToolDefinition],
-        ) -> Result<ProviderResponse, ProviderError>;
+       ) -> Result<ProviderResponse, ProviderError>;
    }
    ```
 
@@ -259,7 +259,7 @@ Decouple the agent loop from the LLM network layer. The provider accepts the cur
 
 ---
 
-## 3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)
+### 3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)
 
 #### The Idea
 The agent manages conversational memory and drives the recursive loop: send messages to provider $\rightarrow$ check response $\rightarrow$ execute tools $\rightarrow$ record outputs $\rightarrow$ repeat until the model answers in text or hits the iteration guardrail.
@@ -315,7 +315,7 @@ The agent manages conversational memory and drives the recursive loop: send mess
 
 ---
 
-## 3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)
+### 3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)
 
 #### The Idea
 Provide an immediate, human-usable terminal binary to interact with the agent, test tool calls in real time, and verify model behavior.
@@ -336,7 +336,7 @@ Provide an immediate, human-usable terminal binary to interact with the agent, t
 
 ---
 
-## 3.8 Milestone 1 Acceptance Criteria
+### 3.8 Milestone 1 Acceptance Criteria
 
 Before declaring Milestone 1 complete, the following criteria must be satisfied:
 
@@ -853,4 +853,32 @@ impl Tool for TimeTool {
   - `cargo fmt --check` passed cleanly.
   - `cargo test` ran 23 library tests + 0 binary unit tests with 23/23 passing (0 failures).
 - **Next Steps**:
-  - Milestone 1 / STEP 1 is now fully complete and verified. Ready for tagging/release or next milestone planning.
+  - Perform codebase-wide review, style harmonization, edge-case analysis, and test suite hardening.
+
+---
+
+### [2026-09-25] - Codebase Review, Refactoring & Test Suite Hardening
+- **Objective**: Conduct a comprehensive codebase review, restyle and comment all modules, expand test coverage for all edge cases across domain models, tool registry, HTTP provider, agent execution engine, and built-in tools.
+- **Changes Made**:
+  - Enhanced [`src/core/types.rs`](file:///home/nana/dev/harness/src/core/types.rs):
+    - Added `Message::assistant_with_tool_calls(content, tool_calls)` for assistant messages containing thoughts/text alongside tool calls.
+    - Added role inspection helper methods: `is_system()`, `is_user()`, `is_assistant()`, `is_tool()`.
+    - Added unit tests for role checking and assistant turns with simultaneous content and tool calls.
+  - Enhanced [`src/core/tool.rs`](file:///home/nana/dev/harness/src/core/tool.rs):
+    - Added `contains(&self, name: &str) -> bool` and `unregister(&mut self, name: &str) -> Option<Box<dyn Tool>>` methods.
+    - Added unit tests for tool existence checks, unregistration, and whitespace/empty argument parsing.
+  - Enhanced [`src/core/provider.rs`](file:///home/nana/dev/harness/src/core/provider.rs):
+    - Added unit tests for parsing multiple parallel tool calls in a single response and fallback handling for null content.
+  - Enhanced [`src/core/agent.rs`](file:///home/nana/dev/harness/src/core/agent.rs):
+    - Added unit tests for multi-tool calls in a single turn, multi-turn conversation memory persistence, `clear_history()`, and `config_mut()` / `registry_mut()` accessors.
+  - Enhanced [`src/tools/calculator.rs`](file:///home/nana/dev/harness/src/tools/calculator.rs) and [`src/tools/echo.rs`](file:///home/nana/dev/harness/src/tools/echo.rs):
+    - Added edge case tests for missing parameters, negative numbers, division by zero, and invalid data types (e.g. non-numeric operands).
+- **Architectural Decisions**:
+  - Retained strict zero-dependency bloat while maximizing API ergonomics and hardening against edge cases.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` expanded from 23 to 31 tests with 31/31 passing (100% success rate).
+- **Next Steps**:
+  - Codebase is clean, hardened, and ready for planning Milestone 2 / new feature issues.

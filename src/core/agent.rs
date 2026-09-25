@@ -405,4 +405,75 @@ mod tests {
         assert_eq!(err, AgentError::MaxIterationsExceeded { max_iterations: 3 });
         assert_eq!(call_count.load(Ordering::SeqCst), 3);
     }
+
+    #[test]
+    fn test_agent_multiple_tool_calls_in_single_turn() {
+        let (provider, call_count) = MockScriptedProvider::new(vec![
+            ProviderResponse::ToolCalls(vec![
+                ToolCall::new("call_a", "calculator", r#"{"a": 10, "b": 5, "op": "add"}"#),
+                ToolCall::new("call_b", "echo", r#"{"message": "Calculated"}"#),
+            ]),
+            ProviderResponse::Text("10 + 5 is 15. Calculated.".to_string()),
+        ]);
+
+        let mut registry = ToolRegistry::new();
+        registry.register(CalculatorTool);
+        registry.register(EchoTool);
+
+        let mut agent = Agent::new(provider, registry);
+        let res = agent.run("Add 10 and 5 and confirm").unwrap();
+        assert_eq!(res, "10 + 5 is 15. Calculated.");
+        assert_eq!(call_count.load(Ordering::SeqCst), 2);
+
+        let history = agent.history();
+        // User -> Assistant(2 calls) -> Tool(call_a) -> Tool(call_b) -> Assistant(final text)
+        assert_eq!(history.len(), 5);
+        assert_eq!(history[0].role, Role::User);
+        assert_eq!(history[1].role, Role::Assistant);
+        assert_eq!(history[1].tool_calls.as_ref().unwrap().len(), 2);
+        assert_eq!(history[2].role, Role::Tool);
+        assert_eq!(history[2].content.as_deref(), Some("15"));
+        assert_eq!(history[2].tool_call_id.as_deref(), Some("call_a"));
+        assert_eq!(history[3].role, Role::Tool);
+        assert_eq!(history[3].content.as_deref(), Some("Calculated"));
+        assert_eq!(history[3].tool_call_id.as_deref(), Some("call_b"));
+        assert_eq!(history[4].role, Role::Assistant);
+    }
+
+    #[test]
+    fn test_agent_multi_turn_history_persistence_and_clear() {
+        let (provider, _call_count) = MockScriptedProvider::new(vec![
+            ProviderResponse::Text("Nice to meet you, Alice!".to_string()),
+            ProviderResponse::Text("Your name is Alice.".to_string()),
+        ]);
+
+        let mut agent = Agent::new(provider, ToolRegistry::new());
+
+        let res1 = agent.run("My name is Alice.").unwrap();
+        assert_eq!(res1, "Nice to meet you, Alice!");
+        assert_eq!(agent.history().len(), 2);
+
+        let res2 = agent.run("What is my name?").unwrap();
+        assert_eq!(res2, "Your name is Alice.");
+        assert_eq!(agent.history().len(), 4);
+
+        agent.clear_history();
+        assert_eq!(agent.history().len(), 0);
+
+        agent.add_message(Message::system("Custom System"));
+        assert_eq!(agent.history().len(), 1);
+        assert_eq!(agent.history()[0].content.as_deref(), Some("Custom System"));
+    }
+
+    #[test]
+    fn test_agent_config_and_registry_mutators() {
+        let (provider, _) = MockScriptedProvider::new(vec![]);
+        let mut agent = Agent::new(provider, ToolRegistry::new());
+
+        agent.config_mut().max_iterations = 42;
+        assert_eq!(agent.config().max_iterations, 42);
+
+        agent.registry_mut().register(EchoTool);
+        assert!(agent.registry().contains("echo"));
+    }
 }

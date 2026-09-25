@@ -151,5 +151,25 @@ mod tests {
             ToolError::InvalidArguments(msg) => assert!(msg.contains("Unsupported operation")),
             other => panic!("Expected InvalidArguments, got {:?}", other),
         }
+
+        // Missing / invalid type parameters
+        assert!(calc.execute(json!({"b": 5, "op": "add"})).is_err());
+        assert!(calc.execute(json!({"a": 5, "op": "add"})).is_err());
+        assert!(calc.execute(json!({"a": 5, "b": 5})).is_err());
+        assert!(calc
+            .execute(json!({"a": "not_a_number", "b": 5, "op": "add"}))
+            .is_err());
+
+        // Negative numbers
+        assert_eq!(
+            calc.execute(json!({"a": -10, "b": -20, "op": "add"}))
+                .unwrap(),
+            "-30"
+        );
+        assert_eq!(
+            calc.execute(json!({"a": -10, "b": 2, "op": "divide"}))
+                .unwrap(),
+            "-5"
+        );
     }
 }

@@ -67,5 +67,14 @@ mod tests {
             }
             other => panic!("Expected InvalidArguments, got {:?}", other),
         }
+
+        // Invalid type (e.g. number instead of string)
+        let err_type = echo.execute(json!({"message": 12345})).unwrap_err();
+        match err_type {
+            ToolError::InvalidArguments(msg) => {
+                assert!(msg.contains("Missing required parameter 'message'"))
+            }
+            other => panic!("Expected InvalidArguments, got {:?}", other),
+        }
     }
 }

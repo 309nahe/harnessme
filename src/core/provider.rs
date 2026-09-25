@@ -430,4 +430,72 @@ mod tests {
             _ => panic!("Expected tool calls"),
         }
     }
+
+    #[test]
+    fn test_openai_response_parsing_multiple_tool_calls() {
+        let json_raw = r#"{
+            "id": "chatcmpl-multi",
+            "choices": [
+                {
+                    "index": 0,
+                    "message": {
+                        "role": "assistant",
+                        "content": null,
+                        "tool_calls": [
+                            {
+                                "id": "call_1",
+                                "type": "function",
+                                "function": {
+                                    "name": "calc",
+                                    "arguments": "{\"a\": 1, \"b\": 2, \"op\": \"add\"}"
+                                }
+                            },
+                            {
+                                "id": "call_2",
+                                "type": "function",
+                                "function": {
+                                    "name": "echo",
+                                    "arguments": "{\"message\": \"done\"}"
+                                }
+                            }
+                        ]
+                    }
+                }
+            ]
+        }"#;
+
+        let response = OpenAiCompatibleProvider::parse_response_json(json_raw).unwrap();
+        match response {
+            ProviderResponse::ToolCalls(calls) => {
+                assert_eq!(calls.len(), 2);
+                assert_eq!(calls[0].id, "call_1");
+                assert_eq!(calls[0].function.name, "calc");
+                assert_eq!(calls[1].id, "call_2");
+                assert_eq!(calls[1].function.name, "echo");
+            }
+            _ => panic!("Expected ToolCalls"),
+        }
+    }
+
+    #[test]
+    fn test_openai_response_parsing_null_content_and_no_tool_calls() {
+        let json_raw = r#"{
+            "choices": [
+                {
+                    "message": {
+                        "role": "assistant",
+                        "content": null
+                    }
+                }
+            ]
+        }"#;
+
+        let response = OpenAiCompatibleProvider::parse_response_json(json_raw).unwrap();
+        match response {
+            ProviderResponse::Text(content) => {
+                assert_eq!(content, "");
+            }
+            _ => panic!("Expected empty Text response"),
+        }
+    }
 }

@@ -65,6 +65,16 @@ impl ToolRegistry {
         self.tools.get(name).map(|b| b.as_ref())
     }
 
+    /// Returns true if a tool with the given name is registered.
+    pub fn contains(&self, name: &str) -> bool {
+        self.tools.contains_key(name)
+    }
+
+    /// Unregisters and removes a tool by name, returning the boxed tool if it existed.
+    pub fn unregister(&mut self, name: &str) -> Option<Box<dyn Tool>> {
+        self.tools.remove(name)
+    }
+
     /// Returns the number of registered tools.
     pub fn len(&self) -> usize {
         self.tools.len()
@@ -202,5 +212,56 @@ mod tests {
 
         let err3 = ToolError::ToolNotFound("search".to_string());
         assert_eq!(err3.to_string(), "Tool not found: 'search'");
+    }
+
+    #[test]
+    fn test_registry_contains_and_unregister() {
+        let mut registry = ToolRegistry::new();
+        assert!(!registry.contains("dummy"));
+        registry.register(DummyTool);
+        assert!(registry.contains("dummy"));
+
+        let removed = registry.unregister("dummy");
+        assert!(removed.is_some());
+        assert!(!registry.contains("dummy"));
+        assert!(registry.is_empty());
+
+        let removed_again = registry.unregister("dummy");
+        assert!(removed_again.is_none());
+    }
+
+    #[test]
+    fn test_registry_empty_and_whitespace_args() {
+        struct NoArgTool;
+        impl Tool for NoArgTool {
+            fn name(&self) -> &str {
+                "no_arg"
+            }
+            fn description(&self) -> &str {
+                "Tool without args"
+            }
+            fn parameters_schema(&self) -> serde_json::Value {
+                json!({ "type": "object" })
+            }
+            fn execute(&self, _args: serde_json::Value) -> Result<String, ToolError> {
+                Ok("executed successfully".to_string())
+            }
+        }
+
+        let mut registry = ToolRegistry::new();
+        registry.register(NoArgTool);
+
+        assert_eq!(
+            registry.execute("no_arg", "").unwrap(),
+            "executed successfully"
+        );
+        assert_eq!(
+            registry.execute("no_arg", "   \n\t  ").unwrap(),
+            "executed successfully"
+        );
+        assert_eq!(
+            registry.execute("no_arg", "{}").unwrap(),
+            "executed successfully"
+        );
     }
 }
