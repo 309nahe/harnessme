@@ -48,6 +48,10 @@ pub enum Command {
     ProviderInfo,
     /// Antigravity provider subcommands.
     Agy(AgySubcommand),
+    /// List available models in the subscription.
+    ModelList,
+    /// Swap the active model in the subscription.
+    Model(String),
     /// Regular user prompt to send to the agent.
     UserPrompt(String),
 }
@@ -105,6 +109,16 @@ pub fn parse_command(input: &str) -> Command {
         "/history" | "history" => Command::History,
         "/help" | "help" | "/?" | "?" => Command::Help,
         "/provider" | "/providers" => Command::ProviderInfo,
+        "/models" => Command::ModelList,
+        "/model" | "/swap" => {
+            if parts.len() > 1 {
+                Command::Model(AntigravityProvider::resolve_model_name(
+                    &parts[1..].join(" "),
+                ))
+            } else {
+                Command::ModelList
+            }
+        }
         "/agy" | "agy" => {
             if parts.len() == 1 {
                 return Command::Agy(AgySubcommand::Login(None));
@@ -243,11 +257,15 @@ pub fn parse_command(input: &str) -> Command {
 
 fn print_help() {
     println!("======================= Available REPL Commands =======================");
+    println!("  /models                : List all available models in your subscription");
+    println!("  /model, /swap <num|id> : Swap active model (e.g. '/swap 3' or '/model claude-sonnet-4-6')");
     println!("  /agy                   : Sign in with Google (opens browser to authenticate)");
     println!("  /agy login             : Sign in with Google via default browser");
     println!("  /agy menu              : Display Google AI / Antigravity interactive menu");
-    println!("  /agy models            : List supported Gemini & Antigravity models");
-    println!("  /agy model <name|num>  : Switch model (e.g. '/agy model 2' or 'gemini-2.5-pro')");
+    println!("  /agy models            : List supported Google AI Pro & Antigravity models");
+    println!(
+        "  /agy model <name|num>  : Switch model (e.g. '/agy model 1' or 'gemini-3.1-pro-high')"
+    );
     println!("  /agy status            : Show current Google AI / Antigravity status & endpoints");
     println!("  /agy help              : Display all Antigravity options");
     println!("  /provider              : Show currently active provider details");
@@ -271,30 +289,32 @@ fn print_agy_menu(agy: &AntigravityProvider) {
     println!("----------------------------------------------------------------------");
     println!(" Choose an option or enter a command below:");
     println!("   [1] Sign in with Google (Opens browser) -> '/agy' or '/agy login'");
-    println!("   [2] Change Model (Google AI Pro / AGY)  -> '/agy model' or '/agy models'");
+    println!("   [2] Swap Model (Google AI Pro / AGY)    -> '/swap <num>' or '/models'");
     println!("   [3] View Detailed Status & Endpoints    -> '/agy status'");
     println!("   [?] Full Antigravity Help               -> '/agy help'");
     println!("======================================================================\n");
 }
 
 fn print_agy_models(current_model: &str) {
-    println!("---------------- Available Google AI Pro & Antigravity Models ----------------");
-    for (idx, (name, description)) in AntigravityProvider::SUPPORTED_MODELS.iter().enumerate() {
-        let is_current = if *name == current_model {
+    let models = AntigravityProvider::fetch_available_models();
+    println!("---------------- Available Google AI Pro Subscription Models ----------------");
+    for (idx, (name, description)) in models.iter().enumerate() {
+        let is_current = if name == current_model {
             " (CURRENT)"
         } else {
             ""
         };
         println!(
-            "  [{}] {:<26} : {}{}",
+            "  [{:<2}] {:<26} : {}{}",
             idx + 1,
             name,
             description,
             is_current
         );
     }
-    println!("-------------------------------------------------------------------------------");
-    println!("To select a model, run: '/agy model <number|name>' (e.g. '/agy model 1' or '/agy model gemini-3.1-pro-high')\n");
+    println!("-----------------------------------------------------------------------------");
+    println!("To swap model, enter: '/swap <num|name>' or '/model <num|name>'");
+    println!("Example: '/swap 1' (gemini-3.1-pro-high) or '/swap 12' (claude-sonnet-4-6)\n");
 }
 
 fn print_agy_help() {
@@ -675,6 +695,14 @@ fn main() {
                             }
                         }
                     }
+                    Command::ModelList => {
+                        print_agy_models(agy_provider.model());
+                    }
+                    Command::Model(model_name) => {
+                        agy_provider = agy_provider.with_model(&model_name);
+                        agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                        println!("system > Active subscription model swapped to '{model_name}'.");
+                    }
                     Command::UserPrompt(prompt) => {
                         if prompt.is_empty() {
                             continue;
@@ -716,6 +744,33 @@ mod tests {
         assert_eq!(parse_command("help"), Command::Help);
         assert_eq!(parse_command("/?"), Command::Help);
         assert_eq!(parse_command("/provider"), Command::ProviderInfo);
+        assert_eq!(parse_command("/models"), Command::ModelList);
+        assert_eq!(parse_command("/model"), Command::ModelList);
+        assert_eq!(parse_command("/swap"), Command::ModelList);
+        assert_eq!(
+            parse_command("/swap 1"),
+            Command::Model("gemini-3.1-pro-high".to_string())
+        );
+        assert_eq!(
+            parse_command("/swap 2"),
+            Command::Model("gemini-3.1-pro-low".to_string())
+        );
+        assert_eq!(
+            parse_command("/swap 3"),
+            Command::Model("gemini-3.8-flash-high".to_string())
+        );
+        assert_eq!(
+            parse_command("/model 12"),
+            Command::Model("claude-sonnet-4-6".to_string())
+        );
+        assert_eq!(
+            parse_command("/swap sonnet"),
+            Command::Model("claude-sonnet-4-6".to_string())
+        );
+        assert_eq!(
+            parse_command("/swap claude-opus-4-6-thinking"),
+            Command::Model("claude-opus-4-6-thinking".to_string())
+        );
     }
 
     #[test]
@@ -749,7 +804,7 @@ mod tests {
             Command::Agy(AgySubcommand::ModelList)
         );
         assert_eq!(
-            parse_command("/agy 2 2"),
+            parse_command("/agy 2 3"),
             Command::Agy(AgySubcommand::Model("gemini-3.8-flash-high".to_string()))
         );
         assert_eq!(parse_command("/agy 3"), Command::Agy(AgySubcommand::Status));
@@ -805,6 +860,10 @@ mod tests {
         );
         assert_eq!(
             parse_command("/agy model 2"),
+            Command::Agy(AgySubcommand::Model("gemini-3.1-pro-low".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy model 3"),
             Command::Agy(AgySubcommand::Model("gemini-3.8-flash-high".to_string()))
         );
         assert_eq!(
@@ -814,6 +873,14 @@ mod tests {
         assert_eq!(
             parse_command("/agy model flash"),
             Command::Agy(AgySubcommand::Model("gemini-3.8-flash-high".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy model sonnet"),
+            Command::Agy(AgySubcommand::Model("claude-sonnet-4-6".to_string()))
+        );
+        assert_eq!(
+            parse_command("/agy model 12"),
+            Command::Agy(AgySubcommand::Model("claude-sonnet-4-6".to_string()))
         );
         assert_eq!(
             parse_command("/agy model gemini-3.7-flash-high"),
