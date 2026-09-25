@@ -95,15 +95,15 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Add integration/mock tests for provider responses (both plain text response and tool-call response).
 
 ### Phase 4: The Agent Execution Loop
-- [ ] Implement `Agent` state and memory (message history list).
-- [ ] Implement the execution loop (`Agent::run`):
+- [x] Implement `Agent` state and memory (message history list).
+- [x] Implement the execution loop (`Agent::run`):
   1. Append user prompt to history.
   2. Send history + registered tools to provider.
   3. Inspect provider response:
      - If response has tool calls: execute each tool via `ToolRegistry`, record tool outputs as `Role::Tool` messages, repeat loop.
      - If response is text only: append assistant message and return final response.
   4. Enforce `max_iterations` counter to prevent infinite tool-calling loops.
-- [ ] Support custom hooks / logging callbacks (e.g., observing thoughts, tool invocation start/end).
+- [x] Handle tool execution errors gracefully (feed errors back to LLM context for self-correction).
 
 ### Phase 5: Verification & CLI Demo
 - [ ] Create a minimal `main.rs` binary.

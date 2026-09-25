@@ -1,9 +1,11 @@
 //! Core abstractions and domain data models for the HarnessMe agent runtime.
 
+pub mod agent;
 pub mod provider;
 pub mod tool;
 pub mod types;
 
+pub use agent::{Agent, AgentConfig, AgentError};
 pub use provider::{OpenAiCompatibleProvider, Provider, ProviderError, ProviderResponse};
 pub use tool::{Tool, ToolError, ToolRegistry};
 pub use types::{

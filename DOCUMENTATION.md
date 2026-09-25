@@ -97,7 +97,7 @@ The sole objective of Milestone 1 is to build a functional, reliable end-to-end 
 
 ---
 
-### 3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)
+## 3.2 Part 1: Manifest & Minimal Dependencies (`Cargo.toml`)
 
 #### The Idea
 Milestone 1 must compile in under 5 seconds with zero dependency bloat. We avoid large async runtimes (Tokio/Actix) and heavy utility crates. The harness relies exclusively on the Rust standard library plus two essential crates: one for JSON serialization and one for HTTP requests.
@@ -123,7 +123,7 @@ ureq = { version = "2.10", features = ["json"] }
 
 ---
 
-### 3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)
+## 3.3 Part 2: Core Domain Models & Message IR (`src/core/types.rs`)
 
 #### The Idea
 We need a unified intermediate representation (IR) that models all conversational turns. We match the OpenAI function-calling standard because it is the de-facto protocol implemented by OpenAI, Ollama, vLLM, Groq, Mistral, and LocalAI.
@@ -155,7 +155,7 @@ We need a unified intermediate representation (IR) that models all conversationa
 
 ---
 
-### 3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)
+## 3.4 Part 3: Tool Abstraction & Registry (`src/core/tool.rs`)
 
 #### The Idea
 The agent engine must not be tightly coupled to any specific tool. Any capability (calculator, file reader, web fetcher) must implement a common trait. A registry manages registration, provides schema definitions to the provider, and handles dynamic dispatch.
@@ -194,7 +194,7 @@ The agent engine must not be tightly coupled to any specific tool. Any capabilit
 
 ---
 
-### 3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)
+## 3.5 Part 4: Provider Abstraction & HTTP Client (`src/core/provider.rs`)
 
 #### The Idea
 Decouple the agent loop from the LLM network layer. The provider accepts the current history of messages and available tool definitions, makes an HTTP POST request to `/v1/chat/completions`, and returns either final text or requested tool calls.
@@ -259,7 +259,7 @@ Decouple the agent loop from the LLM network layer. The provider accepts the cur
 
 ---
 
-### 3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)
+## 3.6 Part 5: Agent Execution Loop & Safety Limits (`src/core/agent.rs`)
 
 #### The Idea
 The agent manages conversational memory and drives the recursive loop: send messages to provider $\rightarrow$ check response $\rightarrow$ execute tools $\rightarrow$ record outputs $\rightarrow$ repeat until the model answers in text or hits the iteration guardrail.
@@ -315,7 +315,7 @@ The agent manages conversational memory and drives the recursive loop: send mess
 
 ---
 
-### 3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)
+## 3.7 Part 6: CLI Interactive Demo & REPL (`src/main.rs`)
 
 #### The Idea
 Provide an immediate, human-usable terminal binary to interact with the agent, test tool calls in real time, and verify model behavior.
@@ -336,7 +336,7 @@ Provide an immediate, human-usable terminal binary to interact with the agent, t
 
 ---
 
-### 3.8 Milestone 1 Acceptance Criteria
+## 3.8 Milestone 1 Acceptance Criteria
 
 Before declaring Milestone 1 complete, the following criteria must be satisfied:
 
@@ -504,29 +504,65 @@ Implements the `Provider` trait for standard OpenAI chat completion endpoints (`
 ```rust
 #[derive(Debug, Clone)]
 pub struct AgentConfig {
-    pub model: String,
-    pub temperature: f32,
     pub system_prompt: Option<String>,
     pub max_iterations: usize, // Default: 10
 }
+
+impl AgentConfig {
+    pub fn new() -> Self { ... }
+    pub fn with_system_prompt(mut self, prompt: impl Into<String>) -> Self { ... }
+    pub fn with_max_iterations(mut self, max: usize) -> Self { ... }
+}
 ```
 
-### Step Lifecycle (`Agent::step`)
-1. **Prepare Context**: Assembles message history (prefixed with system prompt if configured) and tool schemas.
-2. **LLM Invocation**: Calls `Provider::complete`.
-3. **Dispatch**:
-   - If `ProviderResponse::Text(content)`: Appends `Role::Assistant` message. Iteration completes with final answer.
+### Agent Errors (`AgentError`)
+```rust
+#[derive(Debug)]
+pub enum AgentError {
+    Provider(ProviderError),
+    MaxIterationsExceeded { max_iterations: usize },
+    Tool(ToolError),
+}
+```
+
+### Agent Lifecycle & Methods (`Agent`)
+```rust
+pub struct Agent {
+    history: Vec<Message>,
+    provider: Box<dyn Provider>,
+    registry: ToolRegistry,
+    config: AgentConfig,
+}
+
+impl Agent {
+    pub fn new(provider: impl Provider + 'static, registry: ToolRegistry) -> Self;
+    pub fn with_config(provider: impl Provider + 'static, registry: ToolRegistry, config: AgentConfig) -> Self;
+    pub fn history(&self) -> &[Message];
+    pub fn history_mut(&mut self) -> &mut Vec<Message>;
+    pub fn clear_history(&mut self);
+    pub fn step(&mut self) -> Result<Option<String>, AgentError>;
+    pub fn run(&mut self, user_prompt: &str) -> Result<String, AgentError>;
+}
+```
+
+### Step & Run Execution Lifecycle
+1. **Initialize Context**: On `run(user_prompt)`, if conversation `history` is empty and `config.system_prompt` is configured, a `Role::System` message is prepended, followed by the user's prompt as `Role::User`.
+2. **Execution Loop & Limits**:
+   - The loop runs up to `config.max_iterations` turns.
+   - If the loop exceeds `config.max_iterations` without reaching a text response, it returns `Err(AgentError::MaxIterationsExceeded)`.
+3. **Step Dispatch**:
+   - Calls `provider.complete(&self.history, &self.registry.definitions())`.
+   - If `ProviderResponse::Text(content)`: Appends `Role::Assistant` message to history and returns `Ok(Some(content))` (completing execution).
    - If `ProviderResponse::ToolCalls(calls)`:
-     - Appends assistant message recording tool calls.
-     - For each tool call:
-       - Parse arguments from JSON string.
-       - Execute tool in `ToolRegistry`.
-       - Append `Role::Tool` message with matching `tool_call_id`.
-     - Repeats step until text response is emitted or `max_iterations` is hit.
+     - Appends `Message::assistant_tool_calls(calls)` to history.
+     - For each `ToolCall`: executes tool via `registry.execute(&call.function.name, &call.function.arguments)`.
+     - In case of failure (`ToolError`), formats error as `"Error: {err}"` so the LLM can self-correct without crashing the engine.
+     - Appends `Message::tool_result(call.id, result_text)` to history.
+     - Returns `Ok(None)` indicating an intermediate tool-turn completed.
 
 ### Guardrails
-- **Max Iterations Check**: Prevents infinite tool-invocation loops.
-- **Tool Error Handling**: If a tool errors out or fails to parse arguments, the error is recorded into the `Role::Tool` message so the LLM can self-correct on the next iteration.
+- **Max Iterations Guardrail**: Terminating infinite tool-invocation loops deterministically with `AgentError::MaxIterationsExceeded`.
+- **Self-Correcting Tool Error Handling**: Tool execution failures (missing tool, invalid arguments, division by zero) are caught cleanly and fed back as `Role::Tool` messages into the prompt context for model self-correction.
 
 ---
 
@@ -767,3 +803,28 @@ impl Tool for TimeTool {
   - `cargo test` ran 17 tests with 17/17 passing (0 failures).
 - **Next Steps**:
   - Implement Issue #4 / Phase 4 (`src/core/agent.rs` execution loop and safety limits).
+
+---
+
+### [2026-09-25] - Implementation of Phase 4 / Issue #4: Agent Execution Loop & Safety Limits
+- **Objective**: Implement Issue #4 (`Agent` struct, `AgentConfig` with configurable system prompt and max iterations, `AgentError` domain enum, recursive execution loop with tool dispatch, and runtime error feedback).
+- **Changes Made**:
+  - Created [`src/core/agent.rs`](file:///home/nana/dev/harness/src/core/agent.rs):
+    - `AgentConfig`: controls `system_prompt` and `max_iterations` (default: 10) with builder methods `with_system_prompt()` and `with_max_iterations()`.
+    - `AgentError`: strongly typed error enum (`Provider(ProviderError)`, `MaxIterationsExceeded { max_iterations }`, `Tool(ToolError)`) implementing `Display`, `std::error::Error`, and `From` conversions.
+    - `Agent` struct: manages `history: Vec<Message>`, `provider: Box<dyn Provider>`, `registry: ToolRegistry`, and `config: AgentConfig`.
+    - `Agent::step(&mut self) -> Result<Option<String>, AgentError>`: single turn execution that invokes provider, pushes assistant turns to history, parses and executes tool calls, records formatted error messages `"Error: {err}"` on tool failure without crashing, and returns `Some(text)` when finished or `None` on tool turns.
+    - `Agent::run(&mut self, user_prompt: &str) -> Result<String, AgentError>`: initializes context (system prompt + user message), runs the execution loop, and enforces `max_iterations` guardrail.
+    - Added 6 unit and integration mock tests covering default configuration, builder pattern, error display traits, direct text responses, multi-turn tool calling loops, tool error recovery/self-correction feedback, and max iterations exceeded termination.
+  - Updated [`src/core/mod.rs`](file:///home/nana/dev/harness/src/core/mod.rs) and [`src/lib.rs`](file:///home/nana/dev/harness/src/lib.rs) re-exports.
+  - Updated Section 7 and checked off Phase 4 in [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) and [`AGENTS.md`](file:///home/nana/dev/harness/AGENTS.md).
+- **Architectural Decisions**:
+  - Zero dependency bloat: standard library and existing crate minimal footprint (`serde`, `serde_json`, `ureq`).
+  - Strict safety: no panics or unwraps in production code paths; all tool execution errors are captured and returned to the LLM as tool result messages so the model can inspect error output and self-correct.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 23 tests with 23/23 passing (0 failures).
+- **Next Steps**:
+  - Implement Issue #5 / Phase 5 (`src/main.rs` CLI interactive REPL & environment loading).
