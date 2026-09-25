@@ -83,10 +83,10 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Implement serialization/deserialization tests for tool definitions and messages.
 
 ### Phase 2: Tool Abstraction & In-Memory Registry
-- [ ] Define the `Tool` trait and `ToolError` type.
-- [ ] Implement `ToolRegistry` for registering and querying tools by name.
-- [ ] Write 1-2 standard test tools (e.g., `CalculatorTool`, `CurrentTimeTool`, or `EchoTool`).
-- [ ] Verify argument parsing and error propagation within tool executions.
+- [x] Define the `Tool` trait and `ToolError` type.
+- [x] Implement `ToolRegistry` for registering and querying tools by name.
+- [x] Write 1-2 standard test tools (e.g., `CalculatorTool`, `CurrentTimeTool`, or `EchoTool`).
+- [x] Verify argument parsing and error propagation within tool executions.
 
 ### Phase 3: Provider Abstraction & OpenAI-Compatible Client
 - [ ] Define the `Provider` trait (input: list of messages + tool definitions; output: `ProviderResponse`).
