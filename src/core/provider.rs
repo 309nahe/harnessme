@@ -317,10 +317,48 @@ impl AntigravityProvider {
         }
     }
 
-    /// Automatically constructs an `AntigravityProvider` discovering configuration from environment variables:
-    /// - Account: `ANTIGRAVITY_ACCOUNT`, `GOOGLE_ACCOUNT`, or `AGY_ACCOUNT`
+    /// Attempts to discover local Google account email from `~/.gemini/google_accounts.json`
+    /// or other local Antigravity configuration files.
+    pub fn read_local_google_account() -> Option<String> {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .ok()?;
+        let path = std::path::Path::new(&home)
+            .join(".gemini")
+            .join("google_accounts.json");
+        let content = std::fs::read_to_string(path).ok()?;
+        let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+        let email = value.get("active")?.as_str()?.trim();
+        if email.is_empty() {
+            None
+        } else {
+            Some(email.to_string())
+        }
+    }
+
+    /// Attempts to discover local OAuth access/bearer token from `~/.gemini/oauth_creds.json`.
+    pub fn read_local_oauth_token() -> Option<String> {
+        let home = std::env::var("HOME")
+            .or_else(|_| std::env::var("USERPROFILE"))
+            .ok()?;
+        let path = std::path::Path::new(&home)
+            .join(".gemini")
+            .join("oauth_creds.json");
+        let content = std::fs::read_to_string(path).ok()?;
+        let value: serde_json::Value = serde_json::from_str(&content).ok()?;
+        let token = value.get("access_token")?.as_str()?.trim();
+        if token.is_empty() {
+            None
+        } else {
+            Some(token.to_string())
+        }
+    }
+
+    /// Automatically constructs an `AntigravityProvider` discovering configuration from
+    /// environment variables and local Google/Antigravity credentials:
+    /// - Account: `ANTIGRAVITY_ACCOUNT`, `GOOGLE_ACCOUNT`, `AGY_ACCOUNT`, or `~/.gemini/google_accounts.json`
     /// - Base URL: `ANTIGRAVITY_BASE_URL`, `AGY_BASE_URL`, or `http://{ANTIGRAVITY_LS_ADDRESS}/v1`
-    /// - API Key: `ANTIGRAVITY_API_KEY` or `AGY_API_KEY`
+    /// - API Key: `ANTIGRAVITY_API_KEY`, `AGY_API_KEY`, or `~/.gemini/oauth_creds.json`
     /// - CSRF Token: `ANTIGRAVITY_CSRF_TOKEN`
     /// - Model: `ANTIGRAVITY_MODEL`, `HARNESS_MODEL`, or `DEFAULT_MODEL` (`gemini-2.5-flash`)
     /// - Source Metadata: `ANTIGRAVITY_SOURCE_METADATA`
@@ -328,11 +366,13 @@ impl AntigravityProvider {
         let account_email = std::env::var("ANTIGRAVITY_ACCOUNT")
             .or_else(|_| std::env::var("GOOGLE_ACCOUNT"))
             .or_else(|_| std::env::var("AGY_ACCOUNT"))
-            .ok();
+            .ok()
+            .or_else(Self::read_local_google_account);
 
         let api_key = std::env::var("ANTIGRAVITY_API_KEY")
             .or_else(|_| std::env::var("AGY_API_KEY"))
-            .ok();
+            .ok()
+            .or_else(Self::read_local_oauth_token);
 
         let base_url = std::env::var("ANTIGRAVITY_BASE_URL")
             .or_else(|_| std::env::var("AGY_BASE_URL"))
@@ -866,5 +906,17 @@ mod tests {
             "custom-gemini-preview"
         );
         assert_eq!(AntigravityProvider::SUPPORTED_MODELS.len(), 5);
+    }
+
+    #[test]
+    fn test_local_google_credentials_discovery() {
+        // Test that read_local_google_account and read_local_oauth_token don't panic
+        // and safely read credentials if files exist in the user's home directory.
+        let _account = AntigravityProvider::read_local_google_account();
+        let _token = AntigravityProvider::read_local_oauth_token();
+
+        let provider = AntigravityProvider::from_env();
+        // Provider is successfully constructed with discovered or default settings
+        assert!(!provider.model().is_empty());
     }
 }
