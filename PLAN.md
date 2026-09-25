@@ -169,6 +169,14 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Implement interactive `/agy` configuration menu presenting choices `[1] Link Google Account / Token` and `[2] Change Model`.
 - [x] Add unit tests in `src/core/provider.rs` and `src/main.rs` for account configuration, model selection shortcuts, and command parsing.
 
+### Phase 14 (MS2 - Issue #14): Exclusive Google AI Provider & Browser-Based Google Sign-In in /agy
+- [x] Configure CLI interactive binary (`src/main.rs`) to default exclusively to Google AI / Antigravity, removing OpenAI default fallback and warnings.
+- [x] Implement cross-platform browser opening utility `open_browser(url)` using standard library `std::process::Command` (`xdg-open`, `open`, `cmd /C start`).
+- [x] Add auto-discovery of local Google credentials in `AntigravityProvider::from_env()` from `~/.gemini/google_accounts.json` and `~/.gemini/oauth_creds.json`.
+- [x] Add `AgySubcommand::Login(Option<String>)` to command parser supporting `/agy`, `/agy login`, `/agy 1`.
+- [x] Implement interactive `handle_google_signin` flow prompting user, opening browser at `https://accounts.google.com/`, auto-linking discovered credentials, and confirming agent readiness.
+- [x] Add unit tests in `src/core/provider.rs` and `src/main.rs` for local credential discovery, login commands, and REPL parsing.
+
 ---
 
 ## 6. Potential Future Enhancements (Post-Milestone 2)
