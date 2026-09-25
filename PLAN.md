@@ -154,6 +154,13 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 - [x] Add unit tests for builder methods, environment defaults, and provider dispatch.
 - [x] Re-export `AntigravityProvider` in `src/core/mod.rs` and `src/lib.rs`.
 
+### Phase 12 (MS2 - Issue #12): REPL Command Parsing & /agy Configuration Command
+- [x] Add `set_provider` and `set_boxed_provider` on `Agent` in `src/core/agent.rs` for dynamic runtime provider mutation.
+- [x] Implement strongly typed `Command` and `AgySubcommand` parser in `src/main.rs`.
+- [x] Support slash commands (`/help`, `/clear`, `/history`, `/exit`, `/quit`, `/provider`) and legacy bare commands.
+- [x] Implement `/agy` subcommands: `/agy status`, `/agy model <name>`, `/agy url <url>`, `/agy port <port>`, `/agy csrf <token|none>`, `/agy key <key|none>`, `/agy temp <val>`, `/agy timeout <secs>`, `/agy reset`, `/agy switch`, `/agy help`.
+- [x] Add unit tests in `src/main.rs` and `src/core/agent.rs` for command parsing and provider replacement.
+
 ---
 
 ## 6. Potential Future Enhancements (Post-Milestone 2)

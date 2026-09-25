@@ -160,41 +160,74 @@ Once the REPL starts, you will see the interactive prompt:
 ====================================================
              HarnessMe Agent Interactive CLI         
 ====================================================
- Model        : gpt-4o-mini
- Base URL     : https://api.openai.com/v1
- API Key      : Configured (hidden)
+ Provider     : Antigravity (AGY)
+ Model        : gemini-2.5-flash
+ Base URL     : http://127.0.0.1:38035/v1
+ Auth Key     : Configured (hidden)
  Max Steps    : 10
  Temperature  : 0.7
 ----------------------------------------------------
- Registered Tools: calculator, echo
- Commands: 'exit'/'quit' to exit, 'clear' to reset history, 'history' to inspect.
+ Registered Tools: echo, calculator
+ Commands: '/help' for manual, '/agy' for Antigravity config, '/exit' to quit.
 ====================================================
 
 user > 
 ```
 
-#### Special Terminal Commands
-- **`history`**: Displays all turns in the active conversation memory, including intermediate `Role::Tool` calls, tool payloads, and assistant messages.
-- **`clear`** (or **`reset`**): Flushes conversation memory and starts a fresh conversation.
-- **`exit`** (or **`quit`**): Gracefully shuts down the REPL session.
+#### Interactive REPL Commands
+HarnessMe supports intuitive slash commands as well as standard shell shorthand:
+
+| Command | Shorthand | Description |
+|---|---|---|
+| `/help` | `help`, `/?` | Display command summary and manual |
+| `/provider` | `/providers` | Display active LLM provider configuration and status |
+| `/history` | `history` | Display full multi-turn conversation memory with tool call identifiers |
+| `/clear` | `clear`, `/reset` | Clear conversation memory and reset context |
+| `/exit` | `exit`, `/quit`, `quit` | Gracefully exit the interactive REPL session |
+
+#### Antigravity Configuration (`/agy` Commands)
+The `/agy` command suite allows inspecting and mutating the Antigravity provider in real-time without restarting the process:
+
+| Command | Example | Description |
+|---|---|---|
+| `/agy` / `/agy status` | `/agy` | Inspect current Antigravity configuration and active status |
+| `/agy model <name>` | `/agy model gemini-2.5-pro` | Switch target model (`gemini-2.5-flash`, `gemini-2.5-pro`, `agy-pro`) |
+| `/agy url <url>` | `/agy url http://127.0.0.1:38035/v1` | Update base endpoint URL |
+| `/agy port <port>` | `/agy port 38035` | Shortcut to update base URL to `http://127.0.0.1:<port>/v1` |
+| `/agy csrf <token\|none>` | `/agy csrf secret123` | Update or clear `X-Antigravity-CSRF-Token` header |
+| `/agy key <key\|none>` | `/agy key token_abc` | Update or clear Bearer API key |
+| `/agy temp <0.0 - 2.0>` | `/agy temp 0.2` | Update sampling temperature |
+| `/agy timeout <secs>` | `/agy timeout 45` | Update HTTP request timeout |
+| `/agy reset` | `/agy reset` | Reload all Antigravity settings from environment variables |
+| `/agy switch` | `/agy switch` | Switch active agent provider to Antigravity (AGY) |
+| `/agy help` | `/agy help` | Display `/agy` command help manual |
 
 #### Example Conversational Workflow
 ```text
-user > Hi! What tools do you have available?
-agent > I have access to a calculator tool for arithmetic and an echo tool.
+user > /agy status
+---------------- Antigravity (AGY) Status ----------------
+  Active on Agent : YES (Active)
+  Model           : gemini-2.5-flash
+  Base URL        : http://127.0.0.1:38035/v1
+  CSRF Token      : Configured
+  API Key         : None
+  Temperature     : 0.7
+  Timeout         : 60s
+----------------------------------------------------------
+
+user > /agy model gemini-2.5-pro
+system > Antigravity model updated to 'gemini-2.5-pro'.
 
 user > Calculate (125 * 8.5) / 2 and tell me the result.
 agent > The result of (125 * 8.5) / 2 is 531.25.
 
-user > history
-system > Conversation history (6 turns):
+user > /history
+system > Conversation history (4 turns):
   [0] system: You are a helpful and concise AI assistant equipped with tools...
-  [1] user: Hi! What tools do you have available?
-  [2] assistant: I have access to a calculator tool for arithmetic and an echo tool.
-  [3] user: Calculate (125 * 8.5) / 2 and tell me the result.
-  [4] assistant (tool_calls: calculator): [No text content]
-  [5] tool (call_id: call_xyz123): 531.25
-  [6] assistant: The result of (125 * 8.5) / 2 is 531.25.
+  [1] user: Calculate (125 * 8.5) / 2 and tell me the result.
+  [2] assistant (tool_calls: calculator): [No text content]
+  [3] tool (call_id: call_xyz123): 531.25
+  [4] assistant: The result of (125 * 8.5) / 2 is 531.25.
 ```
 
 ---
@@ -1032,6 +1065,7 @@ impl Tool for TimeTool {
   - Key rationale and trade-offs.
 - **Verification**:
   - Tests executed and outcomes.
+- **Next Steps**:
   - Follow-up actions for the next agent/developer.
 ```
 
@@ -1319,5 +1353,28 @@ impl Tool for TimeTool {
   - `cargo clippy -- -D warnings` passed with 0 warnings.
   - `cargo fmt --check` passed cleanly.
   - `cargo test` expanded to 33 tests with 33/33 passing (100% success rate).
+- **Next Steps**:
+  - Proceed with Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.
+
+---
+
+### [2026-09-25] - Implementation of Issue #12: REPL Command Parsing & /agy Antigravity Configuration
+- **Objective**: Implement a command parsing system in the CLI REPL (`src/main.rs`) and dynamic provider mutation on `Agent` (`src/core/agent.rs`), introducing `/agy` to inspect and configure the Antigravity provider in real time.
+- **Changes Made**:
+  - Enhanced [`Agent`](file:///home/nana/dev/harness/src/core/agent.rs) with `set_provider` and `set_boxed_provider` for dynamic runtime provider updates without loss of conversation history or tool registrations.
+  - Implemented strongly typed command parser in [`src/main.rs`](file:///home/nana/dev/harness/src/main.rs):
+    - `Command`: `Exit`, `Clear`, `History`, `Help`, `ProviderInfo`, `Agy(AgySubcommand)`, `UserPrompt(String)`.
+    - `AgySubcommand`: `Status`, `Model(String)`, `Url(String)`, `Port(u16)`, `Csrf(Option<String>)`, `Key(Option<String>)`, `Temperature(f32)`, `Timeout(u64)`, `Reset`, `Switch`, `Help`.
+  - Added formatted outputs for `/help`, `/agy status`, `/agy help`, `/provider`, and `/history`.
+  - Added unit tests in `src/main.rs` for command parsing and in `src/core/agent.rs` for `set_provider` and `set_boxed_provider`.
+  - Updated [`DOCUMENTATION.md`](file:///home/nana/dev/harness/DOCUMENTATION.md) Section 1.4 and [`PLAN.md`](file:///home/nana/dev/harness/PLAN.md) Phase 12.
+- **Architectural Decisions**:
+  - Maintained zero dependency bloat: standard library pattern matching and token splitting without external CLI frameworks.
+  - Supported both modern slash commands (`/agy`, `/help`, `/clear`) and legacy bare words for backwards compatibility.
+- **Verification**:
+  - `cargo check --all-targets` passed cleanly.
+  - `cargo clippy -- -D warnings` passed with 0 warnings.
+  - `cargo fmt --check` passed cleanly.
+  - `cargo test` ran 37 tests (34 library + 3 binary unit tests) with 37/37 passing (100% success rate).
 - **Next Steps**:
   - Proceed with Milestone 2 Issue #6: Token Usage Tracking & Provider Metadata.

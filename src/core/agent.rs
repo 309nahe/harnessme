@@ -160,6 +160,16 @@ impl Agent {
         self.history.clear();
     }
 
+    /// Replaces the active LLM provider on the agent.
+    pub fn set_provider(&mut self, provider: impl Provider + 'static) {
+        self.provider = Box::new(provider);
+    }
+
+    /// Replaces the active LLM provider with an already boxed provider instance.
+    pub fn set_boxed_provider(&mut self, provider: Box<dyn Provider>) {
+        self.provider = provider;
+    }
+
     /// Executes a single LLM turn.
     ///
     /// - If the model returns plain text, appends an assistant message and returns `Ok(Some(text))`.
@@ -475,5 +485,29 @@ mod tests {
 
         agent.registry_mut().register(EchoTool);
         assert!(agent.registry().contains("echo"));
+    }
+
+    #[test]
+    fn test_agent_set_provider() {
+        let (provider1, _) =
+            MockScriptedProvider::new(vec![ProviderResponse::Text("First response".to_string())]);
+        let mut agent = Agent::new(provider1, ToolRegistry::new());
+
+        let res1 = agent.run("Query 1").unwrap();
+        assert_eq!(res1, "First response");
+
+        let (provider2, _) =
+            MockScriptedProvider::new(vec![ProviderResponse::Text("Second response".to_string())]);
+        agent.set_provider(provider2);
+
+        let res2 = agent.run("Query 2").unwrap();
+        assert_eq!(res2, "Second response");
+
+        let (provider3, _) =
+            MockScriptedProvider::new(vec![ProviderResponse::Text("Third response".to_string())]);
+        agent.set_boxed_provider(Box::new(provider3));
+
+        let res3 = agent.run("Query 3").unwrap();
+        assert_eq!(res3, "Third response");
     }
 }
