@@ -7,18 +7,31 @@
 use std::env;
 use std::io::{self, Write};
 
-use harnessme::{
-    Agent, AgentConfig, AntigravityProvider, CalculatorTool, EchoTool, OpenAiCompatibleProvider,
-    Provider, ToolRegistry,
-};
+use harnessme::{Agent, AgentConfig, AntigravityProvider, CalculatorTool, EchoTool, ToolRegistry};
 
-const DEFAULT_BASE_URL: &str = "https://api.openai.com/v1";
-const DEFAULT_MODEL: &str = "gpt-4o-mini";
 const DEFAULT_MAX_STEPS: usize = 10;
-const DEFAULT_TEMPERATURE: f32 = 0.7;
 const DEFAULT_SYSTEM_PROMPT: &str =
     "You are a helpful and concise AI assistant equipped with tools. \
 When requested to perform calculations or operations, invoke the appropriate tools accurately.";
+
+/// Attempts to open a URL in the user's default web browser.
+pub fn open_browser(url: &str) -> io::Result<()> {
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("cmd")
+            .args(["/C", "start", "", url])
+            .spawn()?;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open").arg(url).spawn()?;
+    }
+    #[cfg(not(any(target_os = "windows", target_os = "macos")))]
+    {
+        std::process::Command::new("xdg-open").arg(url).spawn()?;
+    }
+    Ok(())
+}
 
 /// Parsed command from the interactive REPL.
 #[derive(Debug, PartialEq, Clone)]
@@ -42,7 +55,9 @@ pub enum Command {
 /// Subcommands supported under `/agy`.
 #[derive(Debug, PartialEq, Clone)]
 pub enum AgySubcommand {
-    /// Present interactive choice menu (link Google account, change model, etc.)
+    /// Trigger Google Sign-In with browser launch.
+    Login(Option<String>),
+    /// Present interactive choice menu (Google sign-in, change model, etc.)
     Menu,
     /// Display Antigravity provider settings and active status.
     Status,
@@ -68,7 +83,7 @@ pub enum AgySubcommand {
     Timeout(u64),
     /// Reload Antigravity settings from environment variables.
     Reset,
-    /// Switch active agent provider to Antigravity.
+    /// Switch or confirm active agent provider is Google AI (Antigravity).
     Switch,
     /// Display `/agy` command help.
     Help,
@@ -92,16 +107,23 @@ pub fn parse_command(input: &str) -> Command {
         "/provider" | "/providers" => Command::ProviderInfo,
         "/agy" | "agy" => {
             if parts.len() == 1 {
-                return Command::Agy(AgySubcommand::Menu);
+                return Command::Agy(AgySubcommand::Login(None));
             }
             let sub = parts[1].to_lowercase();
             match sub.as_str() {
+                "login" | "signin" | "auth" | "google" => {
+                    if parts.len() > 2 {
+                        Command::Agy(AgySubcommand::Login(Some(parts[2..].join(" "))))
+                    } else {
+                        Command::Agy(AgySubcommand::Login(None))
+                    }
+                }
                 "menu" => Command::Agy(AgySubcommand::Menu),
                 "1" => {
                     if parts.len() > 2 {
-                        Command::Agy(AgySubcommand::Link(Some(parts[2..].join(" "))))
+                        Command::Agy(AgySubcommand::Login(Some(parts[2..].join(" "))))
                     } else {
-                        Command::Agy(AgySubcommand::Link(None))
+                        Command::Agy(AgySubcommand::Login(None))
                     }
                 }
                 "2" => {
@@ -119,7 +141,7 @@ pub fn parse_command(input: &str) -> Command {
                 "help" | "?" => Command::Agy(AgySubcommand::Help),
                 "reset" | "reload" => Command::Agy(AgySubcommand::Reset),
                 "switch" | "use" | "activate" => Command::Agy(AgySubcommand::Switch),
-                "link" | "login" | "auth" => {
+                "link" => {
                     if parts.len() > 2 {
                         let val = parts[2..].join(" ");
                         if val.eq_ignore_ascii_case("none") || val.eq_ignore_ascii_case("clear") {
@@ -221,9 +243,13 @@ pub fn parse_command(input: &str) -> Command {
 
 fn print_help() {
     println!("======================= Available REPL Commands =======================");
-    println!("  /help, help, /?        : Show this command summary");
-    println!("  /agy                   : Display Antigravity interactive menu & choices");
-    println!("  /agy [subcommand]      : Inspect or dynamically configure Antigravity");
+    println!("  /agy                   : Sign in with Google (opens browser to authenticate)");
+    println!("  /agy login             : Sign in with Google via default browser");
+    println!("  /agy menu              : Display Google AI / Antigravity interactive menu");
+    println!("  /agy models            : List supported Gemini & Antigravity models");
+    println!("  /agy model <name|num>  : Switch model (e.g. '/agy model 2' or 'gemini-2.5-pro')");
+    println!("  /agy status            : Show current Google AI / Antigravity status & endpoints");
+    println!("  /agy help              : Display all Antigravity options");
     println!("  /provider              : Show currently active provider details");
     println!("  /history, history      : Inspect entire multi-turn conversation memory");
     println!("  /clear, clear, /reset  : Clear conversation history");
@@ -231,28 +257,22 @@ fn print_help() {
     println!("=======================================================================\n");
 }
 
-fn print_agy_menu(agy: &AntigravityProvider, is_active: bool) {
-    println!("================ Antigravity (AGY) Configuration Menu ================");
+fn print_agy_menu(agy: &AntigravityProvider) {
+    println!("================ Google AI / Antigravity Configuration ================");
     println!(
-        " Active Status   : {}",
-        if is_active {
-            "ACTIVE (Agent is using Antigravity)"
-        } else {
-            "STANDBY (Run '/agy switch' or choose [4] to activate)"
-        }
-    );
-    println!(
-        " Linked Account  : {}",
-        agy.account_email().unwrap_or("None (Unlinked)")
+        " Google Account  : {}",
+        agy.account_email()
+            .unwrap_or("None (Run '/agy' to sign in)")
     );
     println!(" Current Model   : {}", agy.model());
+    println!(" Base URL        : {}", agy.base_url());
+    println!(" Temperature     : {}", agy.temperature());
     println!("----------------------------------------------------------------------");
     println!(" Choose an option or enter a command below:");
-    println!("   [1] Link Google Account / Auth Token  -> '/agy link' or '/agy account'");
-    println!("   [2] Change Model (Gemini / AGY)       -> '/agy model' or '/agy models'");
-    println!("   [3] View Detailed Status & Endpoints  -> '/agy status'");
-    println!("   [4] Switch Active Provider to AGY     -> '/agy switch'");
-    println!("   [?] Full Antigravity Help             -> '/agy help'");
+    println!("   [1] Sign in with Google (Opens browser) -> '/agy' or '/agy login'");
+    println!("   [2] Change Model (Gemini / AGY)         -> '/agy model' or '/agy models'");
+    println!("   [3] View Detailed Status & Endpoints    -> '/agy status'");
+    println!("   [?] Full Antigravity Help               -> '/agy help'");
     println!("======================================================================\n");
 }
 
@@ -278,7 +298,8 @@ fn print_agy_models(current_model: &str) {
 
 fn print_agy_help() {
     println!("------------------- Antigravity (/agy) Commands -------------------");
-    println!("  /agy                   : Display interactive menu (link account / change model)");
+    println!("  /agy                   : Sign in with Google (opens browser to authenticate)");
+    println!("  /agy login [account]   : Sign in with Google via default browser");
     println!("  /agy menu              : Display interactive configuration menu");
     println!("  /agy link [token]      : Link Google account / OAuth bearer token or clear");
     println!("  /agy account <email>   : Link Google account email (or 'clear')");
@@ -292,23 +313,17 @@ fn print_agy_help() {
     println!("  /agy temp <0.0 - 2.0>  : Set sampling temperature");
     println!("  /agy timeout <secs>    : Set HTTP request timeout in seconds");
     println!("  /agy reset             : Reload settings from environment variables");
-    println!("  /agy switch            : Switch agent active provider to Antigravity");
+    println!("  /agy switch            : Confirm active provider is Google AI (Antigravity)");
     println!("-------------------------------------------------------------------\n");
 }
 
-fn print_agy_status(agy: &AntigravityProvider, is_active: bool) {
-    println!("---------------- Antigravity (AGY) Status ----------------");
-    println!(
-        "  Active on Agent : {}",
-        if is_active {
-            "YES (Active)"
-        } else {
-            "NO (Standby)"
-        }
-    );
+fn print_agy_status(agy: &AntigravityProvider) {
+    println!("---------------- Google AI / Antigravity Status ----------------");
+    println!("  Active on Agent : YES (Active)");
     println!(
         "  Google Account  : {}",
-        agy.account_email().unwrap_or("None (Unlinked)")
+        agy.account_email()
+            .unwrap_or("None (Not signed in - run '/agy')")
     );
     println!("  Model           : {}", agy.model());
     println!("  Base URL        : {}", agy.base_url());
@@ -321,7 +336,7 @@ fn print_agy_status(agy: &AntigravityProvider, is_active: bool) {
         }
     );
     println!(
-        "  API Key / Bearer: {}",
+        "  Auth / Bearer   : {}",
         if agy.api_key().is_some() {
             "Configured (hidden)"
         } else {
@@ -333,39 +348,70 @@ fn print_agy_status(agy: &AntigravityProvider, is_active: bool) {
     if let Some(src) = agy.source_metadata() {
         println!("  Source Metadata : {src}");
     }
-    println!("----------------------------------------------------------\n");
+    println!("----------------------------------------------------------------\n");
+}
+
+fn handle_google_signin(
+    agy: &mut AntigravityProvider,
+    agent: &mut Agent,
+    account_or_token: Option<String>,
+) {
+    println!("================ Google Sign-In (Google AI / Antigravity) ================");
+    println!("Opening your web browser to authenticate with Google...");
+    println!("If your browser does not open automatically, visit:");
+    println!("  https://accounts.google.com/\n");
+
+    match open_browser("https://accounts.google.com/") {
+        Ok(_) => {
+            println!("system > Browser opened successfully.");
+        }
+        Err(err) => {
+            println!("system > Note: Could not launch system browser automatically: {err}");
+            println!("system > Please open https://accounts.google.com/ in your browser.");
+        }
+    }
+
+    if let Some(ref target) = account_or_token {
+        let trimmed = target.trim();
+        if trimmed.eq_ignore_ascii_case("none") || trimmed.eq_ignore_ascii_case("clear") {
+            *agy = agy
+                .clone()
+                .with_optional_account(None)
+                .with_optional_api_key(None);
+            println!("system > Google account and authentication cleared.");
+        } else if trimmed.contains('@') {
+            *agy = agy.clone().with_account(trimmed);
+            println!("system > Linked Google account to '{trimmed}'.");
+        } else {
+            *agy = agy.clone().with_api_key(trimmed);
+            println!("system > Linked Antigravity auth/bearer token.");
+        }
+    } else {
+        // Automatically discover local Google credentials
+        let refreshed = AntigravityProvider::from_env();
+        if refreshed.account_email().is_some() || refreshed.api_key().is_some() {
+            *agy = refreshed;
+            println!("system > Detected local Google credentials!");
+        }
+    }
+
+    agent.set_boxed_provider(Box::new(agy.clone()));
+
+    println!("--------------------------------------------------------------------------");
+    if let Some(email) = agy.account_email() {
+        println!("  Status   : SIGNED IN");
+        println!("  Account  : {email}");
+    } else {
+        println!("  Status   : ACTIVE (Local Auth / Token Mode)");
+    }
+    println!("  Model    : {}", agy.model());
+    println!("  Endpoint : {}", agy.base_url());
+    println!("system > Google AI (Antigravity) is active and ready to use.");
+    println!("==========================================================================\n");
 }
 
 fn main() {
-    let provider_name = env::var("HARNESS_PROVIDER").unwrap_or_else(|_| {
-        if env::var("ANTIGRAVITY_LS_ADDRESS").is_ok()
-            || env::var("ANTIGRAVITY_BASE_URL").is_ok()
-            || env::var("ANTIGRAVITY_API_KEY").is_ok()
-            || env::var("AGY_API_KEY").is_ok()
-        {
-            "antigravity".to_string()
-        } else {
-            "openai".to_string()
-        }
-    });
-
-    let mut is_antigravity =
-        provider_name.to_lowercase() == "antigravity" || provider_name.to_lowercase() == "agy";
-
     let mut agy_provider = AntigravityProvider::from_env();
-
-    let openai_api_key = env::var("OPENAI_API_KEY").ok();
-    let openai_base_url =
-        env::var("OPENAI_BASE_URL").unwrap_or_else(|_| DEFAULT_BASE_URL.to_string());
-    let openai_model = env::var("HARNESS_MODEL").unwrap_or_else(|_| DEFAULT_MODEL.to_string());
-    let openai_temperature = env::var("HARNESS_TEMPERATURE")
-        .ok()
-        .and_then(|v| v.parse::<f32>().ok())
-        .unwrap_or(DEFAULT_TEMPERATURE);
-
-    let openai_provider = OpenAiCompatibleProvider::new(&openai_model, openai_api_key.clone())
-        .with_base_url(&openai_base_url)
-        .with_temperature(openai_temperature);
 
     let system_prompt =
         env::var("HARNESS_SYSTEM_PROMPT").unwrap_or_else(|_| DEFAULT_SYSTEM_PROMPT.to_string());
@@ -375,69 +421,32 @@ fn main() {
         .unwrap_or(DEFAULT_MAX_STEPS);
 
     println!("====================================================");
-    println!("             HarnessMe Agent Interactive CLI         ");
+    println!("      HarnessMe Agent Interactive CLI (Google AI)   ");
     println!("====================================================");
+    println!(" Provider     : Google AI / Antigravity");
     println!(
-        " Provider     : {}",
-        if is_antigravity {
-            "Antigravity (AGY)"
-        } else {
-            "OpenAI-Compatible"
-        }
+        " Account      : {}",
+        agy_provider
+            .account_email()
+            .unwrap_or("None (Run '/agy' to sign in with Google)")
     );
-    println!(
-        " Model        : {}",
-        if is_antigravity {
-            agy_provider.model()
-        } else {
-            openai_provider.model()
-        }
-    );
-    println!(
-        " Base URL     : {}",
-        if is_antigravity {
-            agy_provider.base_url()
-        } else {
-            openai_provider.base_url()
-        }
-    );
+    println!(" Model        : {}", agy_provider.model());
+    println!(" Base URL     : {}", agy_provider.base_url());
     println!(
         " Auth Key     : {}",
-        if is_antigravity {
-            if agy_provider.api_key().is_some() {
-                "Configured (hidden)"
-            } else {
-                "None / Local Auth"
-            }
-        } else if openai_provider.api_key().is_some() {
+        if agy_provider.api_key().is_some() {
             "Configured (hidden)"
         } else {
-            "None (local endpoint mode)"
+            "None / Local Auth"
         }
     );
     println!(" Max Steps    : {max_iterations}");
-    println!(
-        " Temperature  : {}",
-        if is_antigravity {
-            agy_provider.temperature()
-        } else {
-            openai_provider.temperature()
-        }
-    );
+    println!(" Temperature  : {}", agy_provider.temperature());
     println!("----------------------------------------------------");
 
-    if !is_antigravity
-        && openai_provider.api_key().is_none()
-        && openai_provider
-            .base_url()
-            .starts_with("https://api.openai.com")
-    {
-        eprintln!(
-            "Notice: OPENAI_API_KEY is not set. If connecting to OpenAI, please export OPENAI_API_KEY."
-        );
-        eprintln!("For local models (Ollama/vLLM), configure OPENAI_BASE_URL (e.g. http://localhost:11434/v1).");
-        eprintln!(
-            "To switch to Antigravity, run '/agy switch' or export HARNESS_PROVIDER=antigravity."
+    if agy_provider.account_email().is_none() && agy_provider.api_key().is_none() {
+        println!(
+            "Notice: Not signed in with Google. Type '/agy' to open your browser and sign in."
         );
         println!("----------------------------------------------------");
     }
@@ -456,21 +465,15 @@ fn main() {
             .collect::<Vec<_>>()
             .join(", ")
     );
-    println!(" Commands: '/help' for manual, '/agy' for Antigravity config, '/exit' to quit.");
+    println!(" Commands: '/agy' to sign in with Google, '/help' for manual, '/exit' to quit.");
     println!("====================================================\n");
 
-    // Initialize agent
+    // Initialize agent exclusively with Google AI (Antigravity)
     let config = AgentConfig::new()
         .with_system_prompt(system_prompt)
         .with_max_iterations(max_iterations);
 
-    let active_provider: Box<dyn Provider> = if is_antigravity {
-        Box::new(agy_provider.clone())
-    } else {
-        Box::new(openai_provider.clone())
-    };
-
-    let mut agent = Agent::with_config(active_provider, registry, config);
+    let mut agent = Agent::with_config(Box::new(agy_provider.clone()), registry, config);
 
     let stdin = io::stdin();
     loop {
@@ -526,35 +529,32 @@ fn main() {
                     }
                     Command::ProviderInfo => {
                         println!("---------------- Active Provider Info ----------------");
+                        println!("  Provider Name : Google AI / Antigravity");
                         println!(
-                            "  Provider Name : {}",
-                            if is_antigravity {
-                                "Antigravity (AGY)"
-                            } else {
-                                "OpenAI-Compatible"
-                            }
+                            "  Google Account: {}",
+                            agy_provider
+                                .account_email()
+                                .unwrap_or("None (Not signed in - run '/agy')")
                         );
-                        if is_antigravity {
-                            println!("  Model         : {}", agy_provider.model());
-                            println!("  Base URL      : {}", agy_provider.base_url());
-                            println!("  Temperature   : {}", agy_provider.temperature());
-                        } else {
-                            println!("  Model         : {}", openai_provider.model());
-                            println!("  Base URL      : {}", openai_provider.base_url());
-                            println!("  Temperature   : {}", openai_provider.temperature());
-                        }
-                        println!("  Use '/agy' to inspect or configure Antigravity settings.");
+                        println!("  Model         : {}", agy_provider.model());
+                        println!("  Base URL      : {}", agy_provider.base_url());
+                        println!("  Temperature   : {}", agy_provider.temperature());
+                        println!("  Timeout       : {}s", agy_provider.timeout_secs());
+                        println!("  Use '/agy' to sign in with Google or configure options.");
                         println!("------------------------------------------------------\n");
                     }
-                    Command::Agy(subcommand) => match subcommand {
-                        AgySubcommand::Menu => {
-                            print_agy_menu(&agy_provider, is_antigravity);
-                        }
-                        AgySubcommand::ModelList => {
-                            print_agy_models(agy_provider.model());
-                        }
-                        AgySubcommand::Link(val) => {
-                            match val {
+                    Command::Agy(subcommand) => {
+                        match subcommand {
+                            AgySubcommand::Login(target) => {
+                                handle_google_signin(&mut agy_provider, &mut agent, target);
+                            }
+                            AgySubcommand::Menu => {
+                                print_agy_menu(&agy_provider);
+                            }
+                            AgySubcommand::ModelList => {
+                                print_agy_models(agy_provider.model());
+                            }
+                            AgySubcommand::Link(val) => match val {
                                 Some(target) => {
                                     let trimmed = target.trim();
                                     if trimmed.eq_ignore_ascii_case("none")
@@ -573,136 +573,103 @@ fn main() {
                                         agy_provider = agy_provider.with_api_key(trimmed);
                                         println!("system > Antigravity auth/bearer token linked.");
                                     }
-                                    if is_antigravity {
-                                        agent.set_boxed_provider(Box::new(agy_provider.clone()));
-                                    }
+                                    agent.set_boxed_provider(Box::new(agy_provider.clone()));
                                 }
                                 None => {
                                     println!("---------------- Link Google Account / Token ----------------");
+                                    println!("  1. Sign in via Browser : /agy (or /agy login)");
                                     println!(
-                                        "  1. Link by Email : /agy account <your.email@gmail.com>"
+                                        "  2. Link by Email       : /agy account <your.email@gmail.com>"
                                     );
-                                    println!(
-                                        "  2. Link by Token : /agy link <oauth_bearer_or_api_key>"
-                                    );
-                                    println!("  3. Clear Account : /agy link clear (or /agy account clear)");
+                                    println!("  3. Link by Bearer/Key  : /agy link <token>");
+                                    println!("  4. Clear Account       : /agy link clear (or /agy account clear)");
                                     println!("-------------------------------------------------------------\n");
                                 }
-                            }
-                        }
-                        AgySubcommand::Account(email) => {
-                            let trimmed = email.trim();
-                            if trimmed.is_empty() {
-                                println!("system > Usage: /agy account <your.email@gmail.com> (or '/agy account clear')");
-                            } else if trimmed.eq_ignore_ascii_case("none")
-                                || trimmed.eq_ignore_ascii_case("clear")
-                            {
-                                agy_provider = agy_provider.with_optional_account(None);
-                                if is_antigravity {
+                            },
+                            AgySubcommand::Account(email) => {
+                                let trimmed = email.trim();
+                                if trimmed.is_empty() {
+                                    println!("system > Usage: /agy account <your.email@gmail.com> (or '/agy account clear')");
+                                } else if trimmed.eq_ignore_ascii_case("none")
+                                    || trimmed.eq_ignore_ascii_case("clear")
+                                {
+                                    agy_provider = agy_provider.with_optional_account(None);
                                     agent.set_boxed_provider(Box::new(agy_provider.clone()));
-                                }
-                                println!("system > Google account unlinked.");
-                            } else {
-                                agy_provider = agy_provider.with_account(trimmed);
-                                if is_antigravity {
+                                    println!("system > Google account unlinked.");
+                                } else {
+                                    agy_provider = agy_provider.with_account(trimmed);
                                     agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                    println!("system > Google account linked to '{trimmed}'.");
                                 }
-                                println!("system > Google account linked to '{trimmed}'.");
                             }
-                        }
-                        AgySubcommand::Status => {
-                            print_agy_status(&agy_provider, is_antigravity);
-                        }
-                        AgySubcommand::Help => {
-                            print_agy_help();
-                        }
-                        AgySubcommand::Model(model_name) => {
-                            agy_provider = agy_provider.with_model(&model_name);
-                            if is_antigravity {
+                            AgySubcommand::Status => {
+                                print_agy_status(&agy_provider);
+                            }
+                            AgySubcommand::Help => {
+                                print_agy_help();
+                            }
+                            AgySubcommand::Model(model_name) => {
+                                agy_provider = agy_provider.with_model(&model_name);
+                                agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                println!("system > Google AI model updated to '{model_name}'.");
+                            }
+                            AgySubcommand::Url(url) => {
+                                agy_provider = agy_provider.with_base_url(&url);
+                                agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                println!("system > Google AI base URL updated to '{url}'.");
+                            }
+                            AgySubcommand::Port(port) => {
+                                let url = format!("http://127.0.0.1:{port}/v1");
+                                agy_provider = agy_provider.with_base_url(&url);
+                                agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                println!("system > Google AI base URL set to '{url}'.");
+                            }
+                            AgySubcommand::Csrf(token) => {
+                                if let Some(ref t) = token {
+                                    agy_provider = agy_provider.with_csrf_token(t);
+                                    println!("system > Antigravity CSRF token updated.");
+                                } else {
+                                    agy_provider = agy_provider.with_optional_csrf_token(None);
+                                    println!("system > Antigravity CSRF token cleared.");
+                                }
                                 agent.set_boxed_provider(Box::new(agy_provider.clone()));
                             }
-                            println!("system > Antigravity model updated to '{model_name}'.");
-                            if !is_antigravity {
-                                println!("system > Note: Antigravity is not currently the active provider. Run '/agy switch' to activate.");
-                            }
-                        }
-                        AgySubcommand::Url(url) => {
-                            agy_provider = agy_provider.with_base_url(&url);
-                            if is_antigravity {
+                            AgySubcommand::Key(key) => {
+                                if let Some(ref k) = key {
+                                    agy_provider = agy_provider.with_api_key(k);
+                                    println!("system > Google AI auth token updated.");
+                                } else {
+                                    agy_provider = agy_provider.with_optional_api_key(None);
+                                    println!("system > Google AI auth token cleared.");
+                                }
                                 agent.set_boxed_provider(Box::new(agy_provider.clone()));
                             }
-                            println!("system > Antigravity base URL updated to '{url}'.");
-                            if !is_antigravity {
-                                println!("system > Note: Antigravity is not currently the active provider. Run '/agy switch' to activate.");
-                            }
-                        }
-                        AgySubcommand::Port(port) => {
-                            let url = format!("http://127.0.0.1:{port}/v1");
-                            agy_provider = agy_provider.with_base_url(&url);
-                            if is_antigravity {
+                            AgySubcommand::Temperature(temp) => {
+                                agy_provider = agy_provider.with_temperature(temp);
                                 agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                println!("system > Google AI temperature updated to {temp}.");
                             }
-                            println!("system > Antigravity base URL set to '{url}'.");
-                            if !is_antigravity {
-                                println!("system > Note: Antigravity is not currently the active provider. Run '/agy switch' to activate.");
-                            }
-                        }
-                        AgySubcommand::Csrf(token) => {
-                            if let Some(ref t) = token {
-                                agy_provider = agy_provider.with_csrf_token(t);
-                                println!("system > Antigravity CSRF token updated.");
-                            } else {
-                                agy_provider = agy_provider.with_optional_csrf_token(None);
-                                println!("system > Antigravity CSRF token cleared.");
-                            }
-                            if is_antigravity {
+                            AgySubcommand::Timeout(timeout) => {
+                                agy_provider = agy_provider.with_timeout(timeout);
                                 agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                println!("system > Google AI timeout updated to {timeout}s.");
                             }
-                        }
-                        AgySubcommand::Key(key) => {
-                            if let Some(ref k) = key {
-                                agy_provider = agy_provider.with_api_key(k);
-                                println!("system > Antigravity API key updated.");
-                            } else {
-                                agy_provider = agy_provider.with_optional_api_key(None);
-                                println!("system > Antigravity API key cleared.");
-                            }
-                            if is_antigravity {
+                            AgySubcommand::Reset => {
+                                agy_provider = AntigravityProvider::from_env();
                                 agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                println!("system > Google AI settings reloaded from environment.");
+                                print_agy_status(&agy_provider);
                             }
-                        }
-                        AgySubcommand::Temperature(temp) => {
-                            agy_provider = agy_provider.with_temperature(temp);
-                            if is_antigravity {
+                            AgySubcommand::Switch => {
                                 agent.set_boxed_provider(Box::new(agy_provider.clone()));
+                                println!(
+                                    "system > Google AI (Antigravity) is active [{}: {}].",
+                                    agy_provider.model(),
+                                    agy_provider.base_url()
+                                );
                             }
-                            println!("system > Antigravity temperature updated to {temp}.");
                         }
-                        AgySubcommand::Timeout(timeout) => {
-                            agy_provider = agy_provider.with_timeout(timeout);
-                            if is_antigravity {
-                                agent.set_boxed_provider(Box::new(agy_provider.clone()));
-                            }
-                            println!("system > Antigravity timeout updated to {timeout}s.");
-                        }
-                        AgySubcommand::Reset => {
-                            agy_provider = AntigravityProvider::from_env();
-                            if is_antigravity {
-                                agent.set_boxed_provider(Box::new(agy_provider.clone()));
-                            }
-                            println!("system > Antigravity settings reloaded from environment.");
-                            print_agy_status(&agy_provider, is_antigravity);
-                        }
-                        AgySubcommand::Switch => {
-                            is_antigravity = true;
-                            agent.set_boxed_provider(Box::new(agy_provider.clone()));
-                            println!(
-                                "system > Active provider switched to Antigravity (AGY) [{}: {}].",
-                                agy_provider.model(),
-                                agy_provider.base_url()
-                            );
-                        }
-                    },
+                    }
                     Command::UserPrompt(prompt) => {
                         if prompt.is_empty() {
                             continue;
@@ -748,18 +715,29 @@ mod tests {
 
     #[test]
     fn test_parse_command_agy_subcommands() {
-        assert_eq!(parse_command("/agy"), Command::Agy(AgySubcommand::Menu));
+        assert_eq!(
+            parse_command("/agy"),
+            Command::Agy(AgySubcommand::Login(None))
+        );
+        assert_eq!(
+            parse_command("/agy login"),
+            Command::Agy(AgySubcommand::Login(None))
+        );
+        assert_eq!(
+            parse_command("/agy login user@example.com"),
+            Command::Agy(AgySubcommand::Login(Some("user@example.com".to_string())))
+        );
         assert_eq!(
             parse_command("/agy menu"),
             Command::Agy(AgySubcommand::Menu)
         );
         assert_eq!(
             parse_command("/agy 1"),
-            Command::Agy(AgySubcommand::Link(None))
+            Command::Agy(AgySubcommand::Login(None))
         );
         assert_eq!(
             parse_command("/agy 1 user@example.com"),
-            Command::Agy(AgySubcommand::Link(Some("user@example.com".to_string())))
+            Command::Agy(AgySubcommand::Login(Some("user@example.com".to_string())))
         );
         assert_eq!(
             parse_command("/agy 2"),
