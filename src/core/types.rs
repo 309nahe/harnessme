@@ -29,7 +29,7 @@ pub enum Role {
 }
 
 /// A structured request from the LLM to invoke a specific tool.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolCall {
     /// Unique identifier of the call, used to correlate [`Role::Tool`] replies.
     pub id: String,
@@ -38,7 +38,7 @@ pub struct ToolCall {
 }
 
 /// The function part of a [`ToolCall`].
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct FunctionCall {
     /// Name of the tool to invoke; must match a registered [`crate::core::types::ToolDefinition`] name.
     pub name: String,
@@ -50,7 +50,7 @@ pub struct FunctionCall {
 }
 
 /// The JSON schema representation of a tool advertised to the LLM.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ToolDefinition {
     /// Object type discriminator; usually `"function"`.
     #[serde(rename = "type")]
@@ -60,7 +60,7 @@ pub struct ToolDefinition {
 }
 
 /// Static metadata and parameter schema of a tool.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct FunctionDefinition {
     /// Unique tool identifier (e.g. `"calculator"`).
     pub name: String,
@@ -75,7 +75,7 @@ pub struct FunctionDefinition {
 /// `content` holds the tool output on success, or a human/LLM-readable
 /// error message on failure; either way the agent loop feeds it back to
 /// the model as a `Role::Tool` message so the LLM can self-correct.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ToolResult {
     /// Identifier of the originating [`ToolCall`].
     pub tool_call_id: String,
@@ -87,7 +87,7 @@ pub struct ToolResult {
 ///
 /// Optional fields are skipped during serialization so that simple
 /// user/assistant messages stay free of `null` clutter on the wire.
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Message {
     /// The actor that produced this turn.
     pub role: Role,
@@ -291,5 +291,236 @@ mod tests {
             Role::Assistant
         );
         assert_eq!(Message::tool("id", "ok").role, Role::Tool);
+    }
+
+    #[test]
+    fn all_roles_round_trip_through_json_string() {
+        let messages = [
+            Message::system("you are a harness"),
+            Message::user("hello"),
+            Message::assistant("hi there"),
+            Message::assistant_with_tool_calls(vec![ToolCall {
+                id: "call_1".to_string(),
+                function: FunctionCall {
+                    name: "echo".to_string(),
+                    arguments: "{\"text\": \"hi\"}".to_string(),
+                },
+            }]),
+            Message::tool("call_1", "hi"),
+        ];
+
+        for original in &messages {
+            let json_str = serde_json::to_string(original).unwrap();
+            let back: Message = serde_json::from_str(&json_str).unwrap();
+            assert_eq!(&back, original, "round trip failed for {json_str}");
+        }
+    }
+
+    #[test]
+    fn assistant_message_with_content_and_tool_calls_round_trip() {
+        let original = Message {
+            role: Role::Assistant,
+            content: Some("let me compute that".to_string()),
+            tool_calls: Some(vec![ToolCall {
+                id: "call_7".to_string(),
+                function: FunctionCall {
+                    name: "calculator".to_string(),
+                    arguments: "{\"expr\": \"6*7\"}".to_string(),
+                },
+            }]),
+            tool_call_id: None,
+        };
+        let value = serde_json::to_value(&original).unwrap();
+        assert_eq!(
+            value,
+            json!({
+                "role": "assistant",
+                "content": "let me compute that",
+                "tool_calls": [{
+                    "id": "call_7",
+                    "function": {"name": "calculator", "arguments": "{\"expr\": \"6*7\"}"}
+                }]
+            })
+        );
+
+        let back: Message = serde_json::from_value(value).unwrap();
+        assert_eq!(back, original);
+    }
+
+    #[test]
+    fn assistant_message_without_content_or_tool_calls_omits_both() {
+        let msg = Message {
+            role: Role::Assistant,
+            content: None,
+            tool_calls: None,
+            tool_call_id: None,
+        };
+        let value = serde_json::to_value(&msg).unwrap();
+        assert_eq!(value, json!({"role": "assistant"}));
+
+        let back: Message = serde_json::from_value(value).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn multiple_tool_calls_round_trip_in_order() {
+        let calls = vec![
+            ToolCall {
+                id: "call_a".to_string(),
+                function: FunctionCall {
+                    name: "echo".to_string(),
+                    arguments: "{}".to_string(),
+                },
+            },
+            ToolCall {
+                id: "call_b".to_string(),
+                function: FunctionCall {
+                    name: "calculator".to_string(),
+                    arguments: "{\"expr\": \"1+1\"}".to_string(),
+                },
+            },
+        ];
+        let original = Message::assistant_with_tool_calls(calls);
+        let json_str = serde_json::to_string(&original).unwrap();
+        let back: Message = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(back, original);
+
+        let calls = back.tool_calls.unwrap();
+        assert_eq!(calls[0].id, "call_a");
+        assert_eq!(calls[1].id, "call_b");
+    }
+
+    #[test]
+    fn tool_call_round_trip_preserves_exact_wire_fields() {
+        let original = ToolCall {
+            id: "call_abc".to_string(),
+            function: FunctionCall {
+                name: "get_weather".to_string(),
+                arguments: "{\"city\": \"Paris\", \"unit\": \"c\"}".to_string(),
+            },
+        };
+        let value = serde_json::to_value(&original).unwrap();
+        assert_eq!(
+            value,
+            json!({
+                "id": "call_abc",
+                "function": {
+                    "name": "get_weather",
+                    "arguments": "{\"city\": \"Paris\", \"unit\": \"c\"}"
+                }
+            })
+        );
+
+        let back: ToolCall = serde_json::from_value(value).unwrap();
+        assert_eq!(back, original);
+    }
+
+    #[test]
+    fn tool_definition_round_trips_from_canonical_openai_json() {
+        let wire_json = r#"{
+            "type": "function",
+            "function": {
+                "name": "calculator",
+                "description": "Evaluates arithmetic expressions",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "expr": {"type": "string", "description": "Expression to evaluate"}
+                    },
+                    "required": ["expr"]
+                }
+            }
+        }"#;
+        let parsed: ToolDefinition = serde_json::from_str(wire_json).unwrap();
+        assert_eq!(parsed.kind, "function");
+        assert_eq!(parsed.function.name, "calculator");
+        assert_eq!(parsed.function.description, "Evaluates arithmetic expressions");
+
+        // Re-serialization must reproduce the exact wire field names.
+        let back = serde_json::to_string_pretty(&parsed).unwrap();
+        let reparsed: ToolDefinition = serde_json::from_str(&back).unwrap();
+        assert_eq!(reparsed, parsed);
+        let value = serde_json::to_value(&parsed).unwrap();
+        assert!(value.get("type").is_some());
+        assert!(value.get("function").is_some());
+        assert!(value["function"].get("name").is_some());
+        assert!(value["function"].get("description").is_some());
+        assert!(value["function"].get("parameters").is_some());
+    }
+
+    #[test]
+    fn tool_definition_with_empty_schema_round_trip() {
+        let original = ToolDefinition {
+            kind: "function".to_string(),
+            function: FunctionDefinition {
+                name: "ping".to_string(),
+                description: "No-op liveness probe".to_string(),
+                parameters: json!({"type": "object", "properties": {}}),
+            },
+        };
+        let json_str = serde_json::to_string(&original).unwrap();
+        let back: ToolDefinition = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(back, original);
+    }
+
+    #[test]
+    fn malformed_wire_json_is_rejected() {
+        // Message without a role.
+        assert!(serde_json::from_str::<Message>(r#"{"content": "x"}"#).is_err());
+        // Message with an unknown role.
+        assert!(serde_json::from_str::<Message>(r#"{"role": "bot"}"#).is_err());
+        // ToolCall without an id.
+        assert!(serde_json::from_str::<ToolCall>(r#"{"function": {"name": "e", "arguments": "{}"}}"#).is_err());
+        // FunctionCall without arguments.
+        assert!(serde_json::from_str::<FunctionCall>(r#"{"name": "e"}"#).is_err());
+        // ToolDefinition without the "type" discriminator.
+        assert!(serde_json::from_str::<ToolDefinition>(
+            r#"{"function": {"name": "e", "description": "d", "parameters": {}}}"#
+        )
+        .is_err());
+        // FunctionDefinition without parameters.
+        assert!(serde_json::from_str::<FunctionDefinition>(
+            r#"{"name": "e", "description": "d"}"#
+        )
+        .is_err());
+    }
+
+    #[test]
+    fn empty_and_unicode_payloads_survive_round_trip() {
+        let original = ToolCall {
+            id: String::new(),
+            function: FunctionCall {
+                name: "echo".to_string(),
+                arguments: String::new(),
+            },
+        };
+        let back: ToolCall =
+            serde_json::from_str(&serde_json::to_string(&original).unwrap()).unwrap();
+        assert_eq!(back, original);
+
+        let msg = Message::user("héllo — 世界 \u{1F9E0}");
+        let back: Message =
+            serde_json::from_str(&serde_json::to_string(&msg).unwrap()).unwrap();
+        assert_eq!(back, msg);
+    }
+
+    #[test]
+    fn full_conversation_history_round_trip() {
+        let history = vec![
+            Message::system("You are a helpful harness."),
+            Message::user("what is 2+2?"),
+            Message::assistant_with_tool_calls(vec![ToolCall {
+                id: "call_1".to_string(),
+                function: FunctionCall {
+                    name: "calculator".to_string(),
+                    arguments: "{\"expr\": \"2+2\"}".to_string(),
+                },
+            }]),
+            Message::tool("call_1", "4"),
+            Message::assistant("2+2 equals 4."),
+        ];
+        let json_str = serde_json::to_string(&history).unwrap();
+        let back: Vec<Message> = serde_json::from_str(&json_str).unwrap();
+        assert_eq!(back, history);
     }
 }

@@ -131,7 +131,7 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
 
 | Phase | Description | Status | Reference |
 |---|---|---|---|
-| **Phase 1** | Project setup & core domain types (`Role`, `Message`, `ToolCall`, `ToolResult`) | In Progress (Issues #15, #16 complete) | [PLAN.md:L80-84](file:///home/nana/dev/harness/PLAN.md#L80-L84) |
+| **Phase 1** | Project setup & core domain types (`Role`, `Message`, `ToolCall`, `ToolResult`) | Complete (Issues #15, #16, #17 closed) | [PLAN.md:L80-84](file:///home/nana/dev/harness/PLAN.md#L80-L84) |
 | **Phase 2** | Tool abstraction & in-memory `ToolRegistry` with sample tools | Planned | [PLAN.md:L85-90](file:///home/nana/dev/harness/PLAN.md#L85-L90) |
 | **Phase 3** | Provider abstraction & OpenAI-compatible client | Planned | [PLAN.md:L91-96](file:///home/nana/dev/harness/PLAN.md#L91-L96) |
 | **Phase 4** | The Agent execution loop & guardrails | Planned | [PLAN.md:L97-107](file:///home/nana/dev/harness/PLAN.md#L97-L107) |
@@ -253,6 +253,29 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
   - Close issues #15 and #16 via `gh` once confirmed complete.
   - Issue #17: Extend serde round-trip tests.
   - Issues #18-19 (Phase 2): `Tool` trait, `ToolError`, and in-memory `ToolRegistry`.
+
+---
+
+### [2026-10-09] - Mistral Vibe (Issue #17: serde round-trip tests; dev branch reset)
+- **Objective**: Complete issue #17 (serialization/deserialization tests for messages and tool definitions), and re-establish the `dev` branch from the current local Phase 1 baseline.
+- **Changes Made**:
+  - `AGENTS.md`: Added Rule 7 (GitHub operations via `gh`); recorded that issues #15/#16 were closed via `gh`; reset roadmap Phase 1 to Complete.
+  - Deleted the stale remote `dev` branch (an unrelated, far-ahead history from a previous iteration) and recreated it from the current local baseline; old tip archived locally as `archive/old-dev` (660f080).
+  - Committed the Phase 1 work (issues #15, #16) on `dev` and pushed it as the new remote baseline.
+  - `src/core/types.rs`: Added `PartialEq`/`Eq` derives to all data structs (no wire-format impact; enables whole-value round-trip assertions). Added 10 new tests: all-roles JSON-string round-trip, assistant message with content + tool calls, assistant message omitting both optional fields, multiple tool calls ordering, standalone `ToolCall` exact wire fields, canonical OpenAI `ToolDefinition` JSON parse/re-serialize, empty-schema `ToolDefinition` round-trip, malformed-JSON rejection, empty/unicode payloads, full conversation-history round-trip.
+  - `PLAN.md`: Checked off Phase 1 item 3 (issue #17).
+  - `DOCUMENTATION.md`: Expanded Section 10 (Testing & Verification Strategy) with the issue #17 coverage inventory.
+- **Architectural Decisions**:
+  - Round-trip tests compare whole values via `assert_eq!` after adding `PartialEq`/`Eq` derives, rather than field-by-field checks, to keep failures readable and exhaustive.
+  - Tests assert exact JSON field names against the OpenAI wire format (including `type` rename on `ToolDefinition.kind` and raw-string preservation of `FunctionCall::arguments`).
+  - `dev` is now a clean continuation of `main` plus Phase 1; the old remote history is preserved locally in `archive/old-dev` for reference and can be deleted at will.
+- **Verification**:
+  - `cargo test`: 18 passed, 0 failed (8 pre-existing + 10 new).
+  - `gh issue list --state open`: #15, #16 closed via `gh issue close` with verification comments.
+- **Next Steps**:
+  - Close issue #17 via `gh issue close` once this change is pushed.
+  - Issues #18-19 (Phase 2): `Tool` trait, `ToolError`, and in-memory `ToolRegistry`.
+  - Delete `archive/old-dev` once the old history is confirmed unneeded.
 
 ---
 

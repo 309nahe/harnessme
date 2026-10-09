@@ -80,7 +80,7 @@ To keep compile times fast and binary sizes small, we keep external crates to th
 ### Phase 1: Project Setup & Core Domain Types
 - [x] Initialize `Cargo.toml` with minimal dependencies (`serde`, `serde_json`, chosen HTTP client).
 - [x] Implement foundational domain data models (`Message`, `Role`, `ToolCall`, `ToolDefinition`, `ToolResult`).
-- [ ] Implement serialization/deserialization tests for tool definitions and messages.
+- [x] Implement serialization/deserialization tests for tool definitions and messages (Issue #17).
 
 ### Phase 2: Tool Abstraction & In-Memory Registry
 - [ ] Define the `Tool` trait and `ToolError` type.

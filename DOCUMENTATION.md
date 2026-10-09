@@ -330,7 +330,9 @@ impl Tool for TimeTool {
 ## 10. Testing & Verification Strategy
 
 - **Unit Tests**:
-  - Serialization/deserialization tests for `Role`, `Message`, `ToolCall`, `ToolDefinition`.
+  - Serialization/deserialization tests for `Role`, `Message`, `ToolCall`, `ToolDefinition`, `ToolResult`.
+  - Round-trip tests (struct -> JSON -> struct) covering all `Role` variants, assistant messages with and without tool calls, multiple tool calls per message, standalone `ToolCall` wire fields, and canonical OpenAI-shaped `ToolDefinition` JSON parsing (Issue #17).
+  - Wire-format assertions: exact field names (`role`, `content`, `tool_calls`, `tool_call_id`, `id`, `function`, `name`, `arguments`, `type`, `description`, `parameters`), `Option` field skipping, raw-string preservation of `FunctionCall::arguments`, malformed-JSON rejection, empty/unicode payloads, and full conversation-history round-trips.
   - In-memory `ToolRegistry` lookup and execution.
 - **Mock Provider Tests**:
   - Deterministic testing using a `MockProvider` returning pre-arranged tool calls and text responses to verify loop behavior without external API requests.
