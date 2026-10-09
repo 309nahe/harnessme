@@ -126,6 +126,24 @@ pub struct FunctionCall {
 }
 ```
 
+### `ToolResult`
+The outcome of executing a tool, correlated to its originating `ToolCall`:
+```rust
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ToolResult {
+    pub tool_call_id: String,
+    pub content: String, // tool output, or a human/LLM-readable error message
+}
+```
+
+### `Message` Constructors
+Convenience constructors build well-formed messages for each role:
+`Message::system`, `Message::user`, `Message::assistant`,
+`Message::assistant_with_tool_calls(Vec<ToolCall>)`, and
+`Message::tool(tool_call_id, content)`. Optional fields
+(`tool_calls`, `tool_call_id`) are skipped during serialization when
+absent, keeping simple turns free of `null` clutter on the wire.
+
 ### `ToolDefinition`
 The JSON schema representation advertised to the LLM during prompt construction:
 ```rust

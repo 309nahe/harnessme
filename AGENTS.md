@@ -62,6 +62,24 @@ All AI agents operating on this repository must adhere to the following non-nego
   2. [AGENTS.md](file:///home/nana/dev/harness/AGENTS.md) (Living changelog & architectural notes).
   3. [PLAN.md](file:///home/nana/dev/harness/PLAN.md) (Check off completed milestones).
 
+### Rule 5: Document Produced Code Properly
+- All produced code must be properly documented at the source level:
+  - Every public item (struct, enum, trait, function, method, module) must carry a `///` doc comment explaining its purpose, invariants, and usage.
+  - Modules must have a `//!` header comment describing their responsibility within the architecture.
+  - Documentation must describe behavior, not implementation trivia, and must be kept in sync when the code changes.
+
+### Rule 6: Unit Testing & Regression Prevention
+- All produced code must ship with unit tests to prevent regressions:
+  - Every new module or public API must include `#[cfg(test)]` unit tests covering nominal cases and key edge cases (empty input, malformed data, boundary values).
+  - Serialization-bound types must include round-trip tests (`struct -> JSON -> struct`) to guarantee wire-format stability.
+  - `cargo test` must pass before any change is considered complete; a change that breaks an existing test must fix the test or justify the behavioral change in the changelog entry.
+  - Never delete a failing test to make a suite pass; fix the underlying defect or document the intentional behavior change.
+
+### Rule 7: GitHub Operations via `gh`
+- **Always use the `gh` CLI** for any GitHub interaction (issues, pull requests, releases, comments, labels, repo metadata), never the REST/GraphQL API through ad-hoc HTTP calls or third-party connectors.
+- Use `gh issue list --repo 309nahe/harnessme --state open` to inspect open work, and `gh issue view <number> --repo 309nahe/harnessme` before implementing an issue so the acceptance criteria are known.
+- Close issues with `gh issue close <number> --repo 309nahe/harnessme` only after the work is verified (tests pass) and this changelog is updated.
+
 ---
 
 ## 3. Architecture Blueprint & Deep Rationale
@@ -113,7 +131,7 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
 
 | Phase | Description | Status | Reference |
 |---|---|---|---|
-| **Phase 1** | Project setup & core domain types (`Role`, `Message`, `ToolCall`, `ToolResult`) | Planned / In Progress | [PLAN.md:L80-84](file:///home/nana/dev/harness/PLAN.md#L80-L84) |
+| **Phase 1** | Project setup & core domain types (`Role`, `Message`, `ToolCall`, `ToolResult`) | In Progress (Issues #15, #16 complete) | [PLAN.md:L80-84](file:///home/nana/dev/harness/PLAN.md#L80-L84) |
 | **Phase 2** | Tool abstraction & in-memory `ToolRegistry` with sample tools | Planned | [PLAN.md:L85-90](file:///home/nana/dev/harness/PLAN.md#L85-L90) |
 | **Phase 3** | Provider abstraction & OpenAI-compatible client | Planned | [PLAN.md:L91-96](file:///home/nana/dev/harness/PLAN.md#L91-L96) |
 | **Phase 4** | The Agent execution loop & guardrails | Planned | [PLAN.md:L97-107](file:///home/nana/dev/harness/PLAN.md#L97-L107) |
@@ -173,6 +191,68 @@ Defines the message envelope and tool structures. All structs derive `Serialize`
   - Verified `dev` branch creation and remote tracking.
 - **Next Steps**:
   - Begin Phase 1 implementation (`Cargo.toml` and `src/core/types.rs`) on `dev` branch.
+
+---
+
+### [2026-10-09] - Mistral Vibe (Phase 1: Issues #15 & #16)
+- **Objective**: Add mandatory documentation and unit-testing directives to this manual, then implement GitHub issues #15 (Cargo project initialization) and #16 (core domain types).
+- **Changes Made**:
+  - `AGENTS.md`: Added Rule 5 (Document Produced Code Properly) and Rule 6 (Unit Testing & Regression Prevention); updated Phase 1 roadmap status.
+  - `Cargo.toml` (new): Initialized with minimal dependencies only (`serde` with `derive`, `serde_json`, `ureq`), per Rule 1.
+  - `src/lib.rs` (new): Library root exposing `pub mod core`.
+  - `src/core/mod.rs` (new): Core module root exposing `types`.
+  - `src/core/types.rs` (new): `Role`, `Message`, `ToolCall`, `FunctionCall`, `ToolDefinition`, `FunctionDefinition`, `ToolResult`, plus `Message` role constructors.
+  - `src/main.rs` (new): Minimal CLI placeholder until Phase 5.
+  - `DOCUMENTATION.md`: Added `ToolResult` specification and `Message` constructor reference to Section 3.
+  - `PLAN.md`: Checked off Phase 1 milestones for issues #15 and #16.
+- **Architectural Decisions**:
+  - `ToolDefinition.kind` uses `#[serde(rename = "type")]` (instead of `r#type`) for a raw identifier-free API surface while keeping the OpenAI wire format.
+  - `FunctionCall::arguments` stays a raw JSON string, parsed lazily at tool-execution time, preserving the exact model output.
+  - Optional `Message` fields use `skip_serializing_if` to keep wire payloads clean.
+  - `ToolResult::content` carries either output or an error message, so failures feed back to the LLM as `Role::Tool` messages per Rule 3.
+- **Verification**:
+  - `cargo test`: 8 unit tests passed (role wire-format, message/ToolCall/ToolResult round-trips, OpenAI tool-definition schema shape, constructor roles).
+  - Note: build required `SDKROOT=/Library/Developer/CommandLineTools/SDKs/MacOSX26.5.sdk` because the default `MacOSX27.0.sdk` tbd files are rejected by the installed Rust 1.89 linker (tapi "malformed file" error).
+- **Next Steps**:
+  - Issue #17: Add serde round-trip tests for tool definitions and messages (basic coverage exists; extend with edge cases and regression tests).
+  - Issues #18-19 (Phase 2): `Tool` trait, `ToolError`, and in-memory `ToolRegistry`.
+  - Consider documenting the SDKROOT workaround for macOS agents in this manual.
+
+---
+
+### [2026-10-09] - Mistral Vibe (macOS toolchain fix: tapi "malformed file" linker error)
+- **Objective**: Diagnose and fix why no Rust crate could link on this MacBook (`ld: tapi error: malformed file ... unknown architecture arm64e.x1`).
+- **Root Cause**:
+  - `xcode-select` pointed at `/Applications/Xcode.app` (26.3), whose MacOS platform SDKs are missing entirely (`Platforms/MacOS.platform/Developer/SDKs/` does not exist), so clang fell back to the CommandLineTools `MacOSX27.0.sdk`.
+  - The 27.0 SDK's `.tbd` files use architectures (e.g. `arm64e.x1`) that Xcode 26.3's older `ld`/libtapi cannot parse, while the matching CommandLineTools toolchain (CLT 27.0, clang 21) understands them fine.
+  - Rust 1.89 itself was never at fault; the same failure occurs with any rustc invoking `cc` against that SDK/toolchain mismatch.
+- **Changes Made**:
+  - Ran `sudo xcode-select -s /Library/Developer/CommandLineTools` so `cc`/`ld` and the default SDK now come from the self-consistent CLT 27.0 toolchain.
+  - No repository files modified; the previous `SDKROOT=...MacOSX26.5.sdk` workaround is no longer needed and can be removed from any shell profile or CI env.
+- **Verification**:
+  - `cargo clean && cargo build`: succeeds with no environment overrides.
+  - `cargo test`: 8 passed, 0 failed.
+  - Standalone `rustc` hello-world outside the repo: compiles and runs.
+- **Next Steps**:
+  - If full Xcode is needed later, reinstall/repair Xcode (its MacOS platform is currently broken) and switch back with `sudo xcode-select -s /Applications/Xcode.app`.
+  - Optionally `rustup update stable` (1.89 -> 1.99 available) for general hygiene; not required for this fix.
+
+---
+
+### [2026-10-09] - Mistral Vibe (Add Rule 7: GitHub operations via `gh`)
+- **Objective**: Mandate the `gh` CLI as the sole interface for GitHub operations in this repository, and list all open issues to establish the remaining roadmap.
+- **Changes Made**:
+  - `AGENTS.md`: Added Rule 7 (GitHub Operations via `gh`) to Section 2.
+- **Architectural Decisions**:
+  - `gh` is authenticated, scoped, and consistent across agents; ad-hoc API calls or connector tools risk auth drift and inconsistent repo targeting.
+  - Canonical repository is `309nahe/harnessme` (origin remote).
+- **Verification**:
+  - `gh issue list --repo 309nahe/harnessme --state open` executed successfully; 5 open issues found (#15-#19).
+  - Noted discrepancy: issues #15 and #16 are still OPEN on GitHub despite being implemented and logged in the changelog (2026-10-09 entry); they still need to be closed via `gh issue close`.
+- **Next Steps**:
+  - Close issues #15 and #16 via `gh` once confirmed complete.
+  - Issue #17: Extend serde round-trip tests.
+  - Issues #18-19 (Phase 2): `Tool` trait, `ToolError`, and in-memory `ToolRegistry`.
 
 ---
 
